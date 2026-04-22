@@ -7,7 +7,7 @@ import { ListaJoia } from "../../models/ListaJoia";
 import { DiasTipo } from "../../models/DiasTipo";
 import { Not, Repository } from "typeorm";
 import { TipoDia, PeriodoRota } from "../../interfaces/ITipos";
-import IConfiguracaoEscala from "../../interfaces/IConfiguracaoEscata";
+import IConfiguracaoEscala from "../../interfaces/IConfiguracaoEscala";
 import IRotasAtivas from "../../interfaces/IRotasAtivas";
 
 export class EscalaService {
