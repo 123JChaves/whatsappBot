@@ -73,7 +73,7 @@ class AdministradorService {
     };
 
     // Service para editar um administrador:
-    static async editarAdminisrtador(id: number, dados: Partial<IAdministrador>): Promise<Administrador> {
+    static async editarAdministrador(id: number, dados: Partial<IAdministrador>): Promise<Administrador> {
         const administrador = await this.administradorRepositorio.findOne({ where: { id } });
 
         if (!administrador) {
