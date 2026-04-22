@@ -143,5 +143,5 @@ vite.config.ts.timestamp-*
 .vite/
 
 # Others
-.wwebjs_auth\session
+.wwebjs_auth/session/
 .wwebjs_cache
