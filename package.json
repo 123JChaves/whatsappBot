@@ -1,0 +1,56 @@
+{
+  "name": "whatsappbot",
+  "version": "1.0.0",
+  "description": "**!!Node.js 22 ou superior - Conferir a versão: `node -v`!!**",
+  "main": "index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "typeorm": "typeorm-ts-node-commonjs",
+    "migration:generate": "npm run typeorm migration:generate -- ./src/migrations/NOME_MIGRATION -d ./src/data-source.ts",
+    "migration:run": "npm run typeorm migration:run -- -d ./src/data-source.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "start": "node dist/index.js",
+    "build": "npx tsc",
+    "db:update": "npm run build && npm run migration:run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/123JChaves/whatsappBot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/123JChaves/whatsappBot/issues"
+  },
+  "homepage": "https://github.com/123JChaves/whatsappBot#readme",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.22.1",
+    "qrcode-terminal": "^0.12.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.28",
+    "whatsapp-web.js": "^1.34.6"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.6.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/supertest": "^7.2.0",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^6.0.3"
+  }
+}
