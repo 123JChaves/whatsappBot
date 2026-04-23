@@ -7,11 +7,11 @@ export class ListaJoia {
     id!: number;
 
     @Column()
-    dia!: Date; // Apenas para sabermos de qual dia é essa captura
+    dia!: Date;
 
     @Column({ default: 'CAPTURA_DIARIA' })
-    identificador!: string; // Ex: "CAPTURA_DIARIA" ou "LISTA_RESERVA"
-
+    identificador!: string;
+    
     @OneToMany(() => OrdemJoinha, (ordemJoinha) => ordemJoinha.listaJoia, { cascade: true })
     ordem_joinha!: OrdemJoinha[];
 }

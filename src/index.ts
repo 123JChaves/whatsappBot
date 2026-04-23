@@ -6,14 +6,12 @@ import { AppDataSource } from "./data-source";
 import { EscalaService } from "./service/whatsapp/EscalaService";
 import { WhatsAppController } from './bot/WhatsAppController';
 import { RegistroService } from "./service/whatsapp/RegistroService";
-
-// Importe suas rotas e o middleware de erro
 import rotasMotorista from "./routes/RotasMotorista";
 import rotasAdministrador from "./routes/RotasAdministrador";
 import middlewareErro from './middlewares/MiddlewareErro';
 
 const app = express();
-app.use(express.json()); // Habilita receber JSON no corpo das requisições
+app.use(express.json());
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -27,12 +25,11 @@ client.on('ready', () => console.log('✅ WhatsApp conectado!'));
 AppDataSource.initialize().then(() => {
     console.log("🚀 Banco Conectado");
 
-    // 1. Configuração da API (Express)
     app.use(rotasMotorista);
     app.use(rotasAdministrador);
     app.use(middlewareErro);
 
-    const PORTA = 3000;
+    const PORTA = 8080;
 
     app.listen(PORTA, () => {
         console.log(`🌐 API rodando em http://localhost:${PORTA}`);
