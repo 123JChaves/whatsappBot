@@ -60,7 +60,7 @@ class AdministradorService {
 
         await VerificarDuplicidade<Administrador>({
             repositorio: this.administradorRepositorio,
-            dados: { cpf: dados.cpf, email: dados.email }
+            dados: { cpf: dados.cpf, email: dados.email, telefoneWhatsapp: dados.telefoneWhatsapp }
         });
 
         const novoAdministrador = await this.administradorRepositorio.save(
@@ -84,18 +84,19 @@ class AdministradorService {
             throw new RequisicaoInvalidaErro('O novo CPF é inválido');
         }
 
-        if (dados.cpf || dados.email) {
-            await VerificarDuplicidade<Administrador>({
+        if (dados.cpf || dados.email || dados.telefoneWhatsapp) {
+            await VerificarDuplicidade<IAdministrador>({
                 repositorio: this.administradorRepositorio,
                 dados: { 
                     cpf: dados.cpf ?? administrador.cpf, 
-                    email: dados.email ?? administrador.email 
+                    email: dados.email ?? administrador.email,
+                    telefoneWhatsapp: dados.telefoneWhatsapp ?? administrador.telefoneWhatsapp 
                 },
                 idParaIgnorar: id
             });
         };
 
-        this.administradorRepositorio.merge(administrador, dados);
+        this.administradorRepositorio.merge(administrador, dados as Administrador);
         const administradorAtualizado = await this.administradorRepositorio.save(administrador);
 
         const { senha, ...resultado } = administradorAtualizado;
@@ -111,7 +112,7 @@ class AdministradorService {
         }
 
         await this.administradorRepositorio.remove(administrador);
-    }
+    };
 };
 
 export default AdministradorService;

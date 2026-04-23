@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity('motorista')
 export class Motorista {
@@ -10,7 +10,7 @@ export class Motorista {
     nome!: string;
 
     @Column( { unique: true })
-    telefone!: string;
+    telefoneWhatsapp!: string;
 
     @Column( { default: true })
     ativo!: boolean;

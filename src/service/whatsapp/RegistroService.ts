@@ -2,25 +2,50 @@ import { AppDataSource } from "../../data-source";
 import { ListaJoia } from "../../models/ListaJoia";
 import { Motorista } from "../../models/Motorista";
 import { OrdemJoinha } from "../../models/OrdemJoinha";
-import { Administrador } from "../../models/Administrador";
 import { Banimento } from "../../models/Banimento";
-import { Repository } from "typeorm";
 import { IdentificadorLista } from "../../interfaces/ITipos";
+import { Client } from "whatsapp-web.js";
+
+// Importação dos Services Centralizados
+import MotoristaService from "../motorista/MotoristaService";
+import AdministradorService from "../administrador/AdministradorService";
 
 export class RegistroService {
-    private readonly motoristaRepo: Repository<Motorista> = AppDataSource.getRepository(Motorista);
-    private readonly ordemRepo: Repository<OrdemJoinha> = AppDataSource.getRepository(OrdemJoinha);
-    private readonly listaRepo: Repository<ListaJoia> = AppDataSource.getRepository(ListaJoia);
-    private readonly adminRepo: Repository<Administrador> = AppDataSource.getRepository(Administrador);
-    private readonly banimentoRepo: Repository<Banimento> = AppDataSource.getRepository(Banimento);
+    private readonly ordemRepo = AppDataSource.getRepository(OrdemJoinha);
+    private readonly listaRepo = AppDataSource.getRepository(ListaJoia);
+    private readonly banimentoRepo = AppDataSource.getRepository(Banimento);
 
-    async adicionarJoinha(whatsappId: string, listaId: number): Promise<OrdemJoinha> {
-        const telefone = this.extrairTelefone(whatsappId);
+    /**
+     * TRADUÇÃO ROBUSTA: Tenta de todas as formas obter o número real do chip (55...)
+     */
+    private async obterNumeroReal(whatsappId: string, client: Client): Promise<string> {
+        try {
+            const contato = await client.getContactById(whatsappId);
+            
+            // Se o número vier preenchido, usamos ele
+            if (contato.number && !contato.number.includes('@')) {
+                return contato.number.replace(/\D/g, '');
+            }
+
+            // Se o número falhar (comum em @lid), tentamos buscar o ID do chat direto
+            const chat = await client.getChatById(whatsappId);
+            if (chat.id.user && !chat.id.user.includes('lid')) {
+                return chat.id.user.replace(/\D/g, '');
+            }
+
+            // Fallback final: limpa o ID bruto se nada mais funcionar
+            return whatsappId.split('@')[0].split(':')[0].replace(/\D/g, '');
+        } catch (error) {
+            return whatsappId.split('@')[0].split(':')[0].replace(/\D/g, '');
+        }
+    }
+
+    async adicionarJoinha(whatsappId: string, listaId: number, client: Client): Promise<OrdemJoinha> {
+        const telefone = await this.obterNumeroReal(whatsappId, client);
         const hoje = this.obterDataHoje();
 
         const motorista = await this.buscarMotoristaAtivoOuFalhar(telefone);
         await this.verificarBanimento(motorista.id, hoje);
-
         const listaAtiva = await this.buscarListaOuFalhar(listaId);
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
@@ -35,14 +60,17 @@ export class RegistroService {
         return await this.ordemRepo.save(novoJoinha);
     }
 
-    async registrarBanimentoAntecipado(whatsappId: string): Promise<void> {
-        const telefone = this.extrairTelefone(whatsappId);
+    async registrarBanimentoAntecipado(whatsappId: string, client: Client): Promise<void> {
+        const telefone = await this.obterNumeroReal(whatsappId, client);
         const hoje = this.obterDataHoje();
 
-        const motorista = await this.motoristaRepo.findOneBy({ telefone, ativo: true });
+        const motorista = await MotoristaService.buscarPorTelefone(telefone);
         if (!motorista) return;
 
-        const jaBanido = await this.banimentoRepo.findOneBy({ motorista: { id: motorista.id }, dia: hoje });
+        const jaBanido = await this.banimentoRepo.findOneBy({ 
+            motorista: { id: motorista.id }, 
+            dia: hoje 
+        });
 
         if (!jaBanido) {
             const novoBan = this.banimentoRepo.create({
@@ -65,25 +93,20 @@ export class RegistroService {
         return lista;
     }
 
-    async verificarSeEhAdmin(whatsappId: string): Promise<boolean> {
-        const telefone = this.extrairTelefone(whatsappId);
-        const admin = await this.adminRepo.findOneBy({ telefoneWhatsapp: telefone });
-        return !!admin;
+    async verificarSeEhAdmin(whatsappId: string, client: Client): Promise<boolean> {
+        const telefone = await this.obterNumeroReal(whatsappId, client);
+        const administradores = await AdministradorService.listarAdministradores();
+        return administradores.some(admin => admin.telefoneWhatsapp === telefone);
     }
 
-    async cadastrarMotorista(nome: string, telefone: string): Promise<Motorista> {
-        const novo = this.motoristaRepo.create({
+    async cadastrarMotorista(nome: string, whatsappId: string, client: Client): Promise<Motorista> {
+        const telefoneReal = await this.obterNumeroReal(whatsappId, client);
+        
+        return await MotoristaService.cadastrarMotorista({
             nome,
-            telefone: telefone.replace(/\D/g, ''),
+            telefoneWhatsapp: telefoneReal,
             ativo: true
         });
-        return await this.motoristaRepo.save(novo);
-    }
-
-    // --- MÉTODOS PRIVADOS (CLEAN CODE) ---
-
-    private extrairTelefone(whatsappId: string): string {
-        return whatsappId.split('@')[0];
     }
 
     private obterDataHoje(): Date {
@@ -93,8 +116,10 @@ export class RegistroService {
     }
 
     private async buscarMotoristaAtivoOuFalhar(telefone: string): Promise<Motorista> {
-        const motorista = await this.motoristaRepo.findOneBy({ telefone, ativo: true });
-        if (!motorista) throw new Error("Motorista não cadastrado ou inativo.");
+        const motorista = await MotoristaService.buscarPorTelefone(telefone);
+        if (!motorista || !motorista.ativo) {
+            throw new Error("Motorista não cadastrado ou inativo.");
+        }
         return motorista;
     }
 
@@ -105,7 +130,10 @@ export class RegistroService {
     }
 
     private async verificarBanimento(motoristaId: number, data: Date): Promise<void> {
-        const banido = await this.banimentoRepo.findOneBy({ motorista: { id: motoristaId }, dia: data });
+        const banido = await this.banimentoRepo.findOneBy({ 
+            motorista: { id: motoristaId }, 
+            dia: data 
+        });
         if (banido) {
             throw new Error(`JOIA BLOQUEADO! 🚫\nMotivo: ${banido.motivo}\nSua participação está bloqueada hoje.`);
         }
