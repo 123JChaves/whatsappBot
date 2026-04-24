@@ -3,7 +3,7 @@ interface IAdministrador {
     cpf: string,
     email: string,
     senha: string,
-    telefoneWhatsapp: string,
+    telefoneWhatsApp: string,
 }
 
 export default IAdministrador;

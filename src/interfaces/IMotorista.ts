@@ -1,6 +1,6 @@
 interface IMotorista {
     nome: string,
-    telefoneWhatsapp: string,
+    telefoneWhatsApp: string,
     ativo: boolean
 }
 

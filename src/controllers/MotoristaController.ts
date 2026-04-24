@@ -35,7 +35,7 @@ class MotoristaController {
         const { id } = req.params;
         const { ativo } = req.body;
         const motorista = await MotoristaService.mostrarUmMotorista(Number(id));
-        await MotoristaService.alterarStatusAtivo(motorista.telefoneWhatsapp, ativo);
+        await MotoristaService.alterarStatusAtivo(motorista.telefoneWhatsApp, ativo);
         return res.status(200).json({
             message: `Motorista ${ativo ? 'ativado' : 'inativado'} com sucesso!` 
         });

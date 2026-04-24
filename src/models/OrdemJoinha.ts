@@ -14,6 +14,9 @@ export class OrdemJoinha {
     @ManyToOne(() => Motorista)
     motorista!: Motorista;
 
+    @Column({ default: false })
+    isPenalizado!: boolean;
+
     @ManyToOne(() => ListaJoia, (lista) => lista.ordem_joinha, { nullable: false })
     listaJoia!: ListaJoia;
 

@@ -14,7 +14,7 @@ export class Administrador {
     cpf!: string;
 
     @Column({ unique: true, nullable: true })
-    telefoneWhatsapp!: string;
+    telefoneWhatsApp!: string;
 
     @Column({ unique: true })
     email!: string;

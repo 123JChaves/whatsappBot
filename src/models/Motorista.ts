@@ -10,7 +10,7 @@ export class Motorista {
     nome!: string;
 
     @Column( { unique: true })
-    telefoneWhatsapp!: string;
+    telefoneWhatsApp!: string;
 
     @Column( { default: true })
     ativo!: boolean;

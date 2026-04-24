@@ -13,7 +13,7 @@ class MotoristaService {
             select: {
                 id: true,
                 nome: true,
-                telefoneWhatsapp: true,
+                telefoneWhatsApp: true,
                 ativo: true
             },
         });
@@ -26,7 +26,7 @@ class MotoristaService {
             select: {
                 id: true,
                 nome: true,
-                telefoneWhatsapp: true,
+                telefoneWhatsApp: true,
                 ativo: true
             },
         });
@@ -38,20 +38,20 @@ class MotoristaService {
         return motorista;
     };
 
-    static async buscarPorTelefone(telefoneWhatsapp: string): Promise<Motorista | null> {
+    static async buscarPorTelefone(telefoneWhatsApp: string): Promise<Motorista | null> {
         return await this.motoristaRepositorio.findOne({
-            where: { telefoneWhatsapp }
+            where: { telefoneWhatsApp }
         });
     };
     
     static async cadastrarMotorista(dados: IMotorista): Promise<Motorista> {
         validarCamposObrigatorios<Motorista>(dados as Motorista, 
-            [ 'nome', 'telefoneWhatsapp' ]
+            [ 'nome', 'telefoneWhatsApp' ]
         );
 
         await VerificarDuplicidade<Motorista>({
             repositorio: this.motoristaRepositorio,
-            dados: { telefoneWhatsapp: dados.telefoneWhatsapp }
+            dados: { telefoneWhatsApp: dados.telefoneWhatsApp }
         });
 
         const novoMotorista = await this.motoristaRepositorio.save(
@@ -68,11 +68,11 @@ class MotoristaService {
             throw new NaoEncontradoErro('Motorista não encontrado!')
         };
 
-        if(dados.telefoneWhatsapp) {
+        if(dados.telefoneWhatsApp) {
             await VerificarDuplicidade<IMotorista>({
                 repositorio: this.motoristaRepositorio,
                 dados:{
-                    telefoneWhatsapp: dados.telefoneWhatsapp ?? motorista.telefoneWhatsapp
+                    telefoneWhatsApp: dados.telefoneWhatsApp ?? motorista.telefoneWhatsApp
                 },
                 idParaIgnorar: id
             });
@@ -83,8 +83,8 @@ class MotoristaService {
         return motoristaAtualizado as Motorista;
     };
 
-    static async alterarStatusAtivo(telefoneWhatsapp: string, status: boolean): Promise<void> {
-        const motorista = await this.motoristaRepositorio.findOneBy({ telefoneWhatsapp });
+    static async alterarStatusAtivo(telefoneWhatsApp: string, status: boolean): Promise<void> {
+        const motorista = await this.motoristaRepositorio.findOneBy({ telefoneWhatsApp });
         if (!motorista) {
             throw new NaoEncontradoErro('Motorista não encontrado com este telefone!');
         }

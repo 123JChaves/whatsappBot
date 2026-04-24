@@ -119,6 +119,10 @@ O [Supertest:] Essencial para testar rotas (as requisições HTTP).
 `npm test -- --forceExit --silent`
 `npm test -- --forceExit`
 
+**Para utilizar o agendamento de ações rodar o [node-cron]**
+`npm install node-cron`
+`npm install --save-dev @types/node-cron`
+
 **Tamanho padrão das imagens: [157x250]**
 
 **Instalação do WhatsappWeb.js**

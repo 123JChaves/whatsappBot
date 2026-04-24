@@ -18,7 +18,7 @@ class AdministradorService {
                 nome: true,
                 cpf: true,
                 email: true,
-                telefoneWhatsapp: true,
+                telefoneWhatsApp: true,
                 dataDeRegistro: true,
                 dataDeEdicao: true
             }
@@ -35,7 +35,7 @@ class AdministradorService {
                 nome: true,
                 cpf: true,
                 email: true,
-                telefoneWhatsapp: true,
+                telefoneWhatsApp: true,
                 dataDeRegistro: true,
                 dataDeEdicao: true
             }
@@ -51,7 +51,7 @@ class AdministradorService {
     // Service para cadastrar um administrador:
     static async cadastrarAdministrador(dados: IAdministrador): Promise<Administrador> {
         validarCamposObrigatorios<Administrador>(dados as Administrador, 
-            ['nome', 'cpf', 'email', 'senha', 'telefoneWhatsapp']
+            ['nome', 'cpf', 'email', 'senha', 'telefoneWhatsApp']
         );
 
         if(!CpfValido(dados.cpf)) {
@@ -60,7 +60,7 @@ class AdministradorService {
 
         await VerificarDuplicidade<Administrador>({
             repositorio: this.administradorRepositorio,
-            dados: { cpf: dados.cpf, email: dados.email, telefoneWhatsapp: dados.telefoneWhatsapp }
+            dados: { cpf: dados.cpf, email: dados.email, telefoneWhatsApp: dados.telefoneWhatsApp }
         });
 
         const novoAdministrador = await this.administradorRepositorio.save(
@@ -84,13 +84,13 @@ class AdministradorService {
             throw new RequisicaoInvalidaErro('O novo CPF é inválido');
         }
 
-        if (dados.cpf || dados.email || dados.telefoneWhatsapp) {
+        if (dados.cpf || dados.email || dados.telefoneWhatsApp) {
             await VerificarDuplicidade<IAdministrador>({
                 repositorio: this.administradorRepositorio,
                 dados: { 
                     cpf: dados.cpf ?? administrador.cpf, 
                     email: dados.email ?? administrador.email,
-                    telefoneWhatsapp: dados.telefoneWhatsapp ?? administrador.telefoneWhatsapp 
+                    telefoneWhatsApp: dados.telefoneWhatsApp ?? administrador.telefoneWhatsApp 
                 },
                 idParaIgnorar: id
             });
