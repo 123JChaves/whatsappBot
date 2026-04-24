@@ -9,9 +9,9 @@ import MotoristaService from "../motorista/MotoristaService";
 import AdministradorService from "../administrador/AdministradorService";
 
 export class RegistroService {
-    private readonly ordemRepo = AppDataSource.getRepository(OrdemJoinha);
-    private readonly listaRepo = AppDataSource.getRepository(ListaJoia);
-    private readonly banimentoRepo = AppDataSource.getRepository(Banimento);
+    private readonly ordemRepositorio = AppDataSource.getRepository(OrdemJoinha);
+    private readonly listaRepositorio = AppDataSource.getRepository(ListaJoia);
+    private readonly banimentoRepositorio = AppDataSource.getRepository(Banimento);
 
     private async obterNumeroReal(whatsappId: string, client: Client): Promise<string> {
         try {
@@ -41,13 +41,13 @@ export class RegistroService {
         const listaAtiva = await this.buscarListaOuFailhar(listaId);
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
-        const novoJoinha = this.ordemRepo.create({ 
+        const novoJoinha = this.ordemRepositorio.create({ 
             posicao: 1, // Marcador de joinha válido
             motorista: motorista, 
             listaJoia: listaAtiva,
             // queimouLargada: false (assumindo que existe este campo na sua Entity)
         });
-        return await this.ordemRepo.save(novoJoinha);
+        return await this.ordemRepositorio.save(novoJoinha);
     }
 
     /**
@@ -63,13 +63,13 @@ export class RegistroService {
         const listaAtiva = await this.buscarListaOuFailhar(listaId);
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
-        const novoJoinha = this.ordemRepo.create({ 
+        const novoJoinha = this.ordemRepositorio.create({ 
             posicao: 0, // Marcador de joinha penalizado
             motorista: motorista, 
             listaJoia: listaAtiva,
             // queimouLargada: true (assumindo que existe este campo na sua Entity)
         });
-        return await this.ordemRepo.save(novoJoinha);
+        return await this.ordemRepositorio.save(novoJoinha);
     }
 
     async registrarBanimentoAntecipado(whatsappId: string, client: Client): Promise<void> {
@@ -78,14 +78,14 @@ export class RegistroService {
         const motorista = await MotoristaService.buscarPorTelefone(telefone);
         if (!motorista) return;
 
-        const jaBanido = await this.banimentoRepo.findOneBy({ motorista: { id: motorista.id }, dia: hoje });
+        const jaBanido = await this.banimentoRepositorio.findOneBy({ motorista: { id: motorista.id }, dia: hoje });
         if (!jaBanido) {
-            const novoBan = this.banimentoRepo.create({ 
+            const novoBan = this.banimentoRepositorio.create({ 
                 dia: hoje, 
                 motorista: motorista, 
                 motivo: "Mensagem enviada antes das 20h00 (Janela proibida 19:57-19:59)" 
             });
-            await this.banimentoRepo.save(novoBan);
+            await this.banimentoRepositorio.save(novoBan);
             }
         }
 
@@ -96,11 +96,11 @@ export class RegistroService {
         // Se dataAlvo existir, usa ela. Se não, usa a data de agora.
         const dataBusca = dataAlvo ? this.formatarDataParaMeiaNoite(dataAlvo) : this.obterDataHoje();
         
-        let lista = await this.listaRepo.findOneBy({ dia: dataBusca });
+        let lista = await this.listaRepositorio.findOneBy({ dia: dataBusca });
         
         if (!lista) {
-            lista = this.listaRepo.create({ dia: dataBusca, identificador });
-            await this.listaRepo.save(lista);
+            lista = this.listaRepositorio.create({ dia: dataBusca, identificador });
+            await this.listaRepositorio.save(lista);
         }
         return lista;
     }
@@ -138,20 +138,20 @@ export class RegistroService {
     }
 
     private async buscarListaOuFailhar(id: number): Promise<ListaJoia> {
-        const lista = await this.listaRepo.findOneBy({ id });
+        const lista = await this.listaRepositorio.findOneBy({ id });
         if (!lista) throw new Error("Não há nenhuma lista aberta para este ID.");
         return lista;
     }
 
     private async verificarBanimento(motoristaId: number, data: Date): Promise<void> {
-        const banido = await this.banimentoRepo.findOneBy({ motorista: { id: motoristaId }, dia: data });
+        const banido = await this.banimentoRepositorio.findOneBy({ motorista: { id: motoristaId }, dia: data });
         if (banido) {
             throw new Error(`JOIA BLOQUEADO! 🚫\nMotivo: ${banido.motivo}\nSua participação está bloqueada hoje.`);
         }
     }
 
     private async verificarDuplicidadeNaLista(motoristaId: number, listaId: number): Promise<void> {
-        const existe = await this.ordemRepo.findOneBy({ motorista: { id: motoristaId }, listaJoia: { id: listaId } });
+        const existe = await this.ordemRepositorio.findOneBy({ motorista: { id: motoristaId }, listaJoia: { id: listaId } });
         if (existe) throw new Error("Você já está nesta lista!");
     }
 }

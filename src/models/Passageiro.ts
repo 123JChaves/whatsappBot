@@ -2,6 +2,7 @@ import { Column, Entity, ManyToMany, ManyToOne, PrimaryGeneratedColumn } from "t
 import { Rota } from "./Rota";
 import { Empresa } from "./Empresa";
 import { Endereco } from "./Endereco";
+import { RotaAtribuida } from "./RotaAtribuida";
 
 @Entity('passageiro')
 export class Passageiro {
@@ -12,11 +13,23 @@ export class Passageiro {
     @Column()
     nome!: string;
 
+    @Column({ unique: true })
+    telefoneWhatsApp!: string;
+
+    @Column({ default: true })
+    ativo!: boolean;
+
     @ManyToOne(() => Endereco, endereco => endereco.passageiro, { cascade: true })
     endereco!: Endereco;
 
     @ManyToOne(() => Empresa, empresa => empresa.passageiros, { cascade: true })
     empresa!: Empresa;
+
+    @Column({ default: false })
+    solicitacao?: boolean;
+
+    @ManyToOne(() => RotaAtribuida, rotaAtribuida => rotaAtribuida.passageiros)
+    corridaSolicitada?: RotaAtribuida;
 
     @ManyToOne(() => Rota, rota => rota.passageiros, {})
     rota?: Rota;

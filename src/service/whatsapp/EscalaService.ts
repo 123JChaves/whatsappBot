@@ -1,7 +1,7 @@
 import { AppDataSource } from "../../data-source";
 import { OrdemJoinha } from "../../models/OrdemJoinha";
 import { Rota } from "../../models/Rota";
-import { RotasAtribuidas } from "../../models/RotasAtribuidas";
+import { RotaAtribuida } from "../../models/RotaAtribuida";
 import { Motorista } from "../../models/Motorista";
 import { ListaJoia } from "../../models/ListaJoia";
 import { DiasTipo } from "../../models/DiasTipo";
@@ -9,6 +9,7 @@ import { Not, Repository } from "typeorm";
 import { TipoDia, PeriodoRota } from "../../interfaces/ITipos";
 import IConfiguracaoEscala from "../../interfaces/IConfiguracaoEscala";
 import IRotasAtivas from "../../interfaces/IRotasAtivas";
+import IRegistroRelatorio from "../../interfaces/IRegistroRelatorio";
 
 export class EscalaService {
     // Regras de Negócio Centrais
@@ -16,11 +17,11 @@ export class EscalaService {
     private readonly LIMITE_PLANTAO_SEGUNDA = 5;
     private readonly DIA_SEMANA_SEGUNDA = 1;
 
-    private readonly ordemRepo: Repository<OrdemJoinha> = AppDataSource.getRepository(OrdemJoinha);
-    private readonly rotaRepo: Repository<Rota> = AppDataSource.getRepository(Rota);
-    private readonly atribuicaoRepo: Repository<RotasAtribuidas> = AppDataSource.getRepository(RotasAtribuidas);
-    private readonly listaRepo: Repository<ListaJoia> = AppDataSource.getRepository(ListaJoia);
-    private readonly diasTipoRepo: Repository<DiasTipo> = AppDataSource.getRepository(DiasTipo);
+    private readonly ordemRepositorio: Repository<OrdemJoinha> = AppDataSource.getRepository(OrdemJoinha);
+    private readonly rotaRepositorio: Repository<Rota> = AppDataSource.getRepository(Rota);
+    private readonly atribuicaoRepositorio: Repository<RotaAtribuida> = AppDataSource.getRepository(RotaAtribuida);
+    private readonly listaRepositorio: Repository<ListaJoia> = AppDataSource.getRepository(ListaJoia);
+    private readonly diasTipoRepositorio: Repository<DiasTipo> = AppDataSource.getRepository(DiasTipo);
 
     /**
      * Executa o processamento completo: Atribuição no Banco + Relatório de WhatsApp
@@ -54,7 +55,7 @@ export class EscalaService {
 
     private async identificarTipoDia(data: Date): Promise<TipoDia> {
         const dataApenas = new Date(data.getFullYear(), data.getMonth(), data.getDate());
-        const registroManual = await this.diasTipoRepo.findOneBy({ data: dataApenas });
+        const registroManual = await this.diasTipoRepositorio.findOneBy({ data: dataApenas });
 
         if (registroManual) return registroManual.tipo;
 
@@ -70,7 +71,7 @@ export class EscalaService {
         tipo: TipoDia,
         qtdMax: number
     ): Promise<void> {
-        const novasAtribuicoes: RotasAtribuidas[] = [];
+        const novasAtribuicoes: RotaAtribuida[] = [];
         const dataTarde = this.calcularDataFutura(lista.dia, 1);
         const dataMadrugada = this.calcularDataFutura(lista.dia, 2);
 
@@ -85,7 +86,7 @@ export class EscalaService {
                     novasAtribuicoes.push(this.criarInstanciaAtribuicao(lista, registro.motorista, rotas.rotasMadrugada[index], dataMadrugada));
                 }
             } else if (tipo === 'DIA_COMUM' && posicaoEfetiva === qtdMax + 1) {
-                this.rotaRepo.findOneBy({ tipo: 'APOIO', tipo_rota: 'ROTA_MADRUGADA' }).then(rotaApoio => {
+                this.rotaRepositorio.findOneBy({ tipo: 'APOIO', tipo_rota: 'ROTA_MADRUGADA' }).then(rotaApoio => {
                     if (rotaApoio) {
                         novasAtribuicoes.push(this.criarInstanciaAtribuicao(lista, registro.motorista, rotaApoio, dataMadrugada));
                     }
@@ -93,7 +94,7 @@ export class EscalaService {
             }
         });
 
-        if (novasAtribuicoes.length > 0) await this.atribuicaoRepo.save(novasAtribuicoes);
+        if (novasAtribuicoes.length > 0) await this.atribuicaoRepositorio.save(novasAtribuicoes);
     }
 
     private montarRelatorioWhatsapp(motoristas: OrdemJoinha[], config: IConfiguracaoEscala): string {
@@ -116,30 +117,36 @@ export class EscalaService {
         return texto;
     }
 
-    private formatarLinhaPorRegra(reg: any, tipo: TipoDia, limite: number, qtdMax: number): string {
+    private formatarLinhaPorRegra(reg: IRegistroRelatorio, tipo: TipoDia, limite: number, qtdMax: number): string {
         const { posicao: p, motorista: { nome } } = reg;
 
         if (tipo === 'DIA_LIVRE') {
-            if (p <= 4) return `${p} ${nome} (00h-04h)\n`;
-            if (p === 5) return `${p} ${nome} (04h-06h)\n`;
+            let linha = "";
+            if (p === 1) linha += `*Plantão dia ${new Date().getDate()}*\n*00h até as rotas*\n`;
+            
+            if (p <= 5) return `${linha}*${p} ${nome}*\n`;
+            
             if (p > 5 && p <= qtdMax) {
-                const header = (p === 6) ? `\nRotas\n` : "";
-                return `${header}${p} ${nome}\n`;
-            }
-            const headerPl = (p === qtdMax + 1) ? `\nPlantonistas Livres\n` : "";
-            return `${headerPl}${nome}\n`;
+                const header = (p === 6) ? `\n*Rotas até 06h*\n` : "";
+                return `${header}*${p} ${nome}*\n`;
+            } 
+            
+            const headerPl = (p === qtdMax + 1) ? `\n*Horário livre*\n` : "";
+            return `${headerPl}- ${nome}\n`;
         }
 
-        // DIA_COMUM ou SEGUNDA
+        // Lógica DIA_COMUM com regra de Apoio
         if (p <= limite) return `${p} ${nome}\n`;
         if (p > limite && p <= qtdMax) {
             const headerRotas = (p === limite + 1) ? `\nRotas\n` : "";
             return `${headerRotas}${p} ${nome}\n`;
         }
         if (p === qtdMax + 1) return `\n${nome} (Apoio/Plantão)\n`;
+        
         const headerBackup = (p === qtdMax + 2) ? `\nBackup\n` : "";
         return `${headerBackup}${nome}\n`;
     }
+
 
     // Auxiliares de Consulta
     private async obterTodasAsRotasAtivas(): Promise<IRotasAtivas> {
@@ -151,7 +158,7 @@ export class EscalaService {
     }
 
     private async obterRotasPorPeriodo(periodo: PeriodoRota): Promise<Rota[]> {
-        return this.rotaRepo.find({ where: { tipo_rota: periodo, tipo: Not('APOIO') }, order: { ordem: "ASC" } });
+        return this.rotaRepositorio.find({ where: { tipo_rota: periodo, tipo: Not('APOIO') }, order: { ordem: "ASC" } });
     }
 
     /**
@@ -159,7 +166,7 @@ export class EscalaService {
      * Válidos primeiro, Penalizados (posicao 0) por último.
      */
     private async obterMotoristasOrdenados(listaId: number): Promise<OrdemJoinha[]> {
-        const todos = await this.ordemRepo.find({
+        const todos = await this.ordemRepositorio.find({
             where: { listaJoia: { id: listaId } },
             relations: ["motorista"],
             order: { id: "ASC" } // Ordem de chegada
@@ -177,15 +184,15 @@ export class EscalaService {
         dataAlvo.setHours(0, 0, 0, 0);
 
         // Verifica se já existe, se sim atualiza, se não cria
-        let registro = await this.diasTipoRepo.findOneBy({ data: dataAlvo });
+        let registro = await this.diasTipoRepositorio.findOneBy({ data: dataAlvo });
         
         if (registro) {
             registro.tipo = tipo;
         } else {
-            registro = this.diasTipoRepo.create({ data: dataAlvo, tipo });
+            registro = this.diasTipoRepositorio.create({ data: dataAlvo, tipo });
         }
 
-        await this.diasTipoRepo.save(registro);
+        await this.diasTipoRepositorio.save(registro);
     }
 
     /**
@@ -196,14 +203,14 @@ export class EscalaService {
         const dataAlvo = new Date(ano, mes - 1, dia);
         dataAlvo.setHours(0, 0, 0, 0);
 
-        await this.diasTipoRepo.delete({ data: dataAlvo });
+        await this.diasTipoRepositorio.delete({ data: dataAlvo });
     }
 
     /**
      * Lista todas as exceções cadastradas (Feriados/Dias Livres/Segundas Especiais)
      */
     async listarDiasManuais(): Promise<string> {
-        const dias = await this.diasTipoRepo.find({ order: { data: "ASC" } });
+        const dias = await this.diasTipoRepositorio.find({ order: { data: "ASC" } });
         
         if (dias.length === 0) return "📅 Nenhuma data manual cadastrada.";
 
@@ -228,16 +235,16 @@ export class EscalaService {
     }
 
     private async buscarListaOuFalhar(id: number): Promise<ListaJoia> {
-        const lista = await this.listaRepo.findOneBy({ id });
+        const lista = await this.listaRepositorio.findOneBy({ id });
         if (!lista) throw new Error("Lista de joinha não encontrada.");
         return lista;
     }
 
-    private criarInstanciaAtribuicao(lista: ListaJoia, motorista: Motorista, rota: Rota, data: Date): RotasAtribuidas {
-        return this.atribuicaoRepo.create({ listaJoia: lista, motorista, rota, dataGeracao: data });
+    private criarInstanciaAtribuicao(lista: ListaJoia, motorista: Motorista, rota: Rota, data: Date): RotaAtribuida {
+        return this.atribuicaoRepositorio.create({ listaJoia: lista, motorista, rota, dataGeracao: data });
     }
 
     private async limparAtribuicoesAnteriores(id: number): Promise<void> {
-        await this.atribuicaoRepo.delete({ listaJoia: { id } });
+        await this.atribuicaoRepositorio.delete({ listaJoia: { id } });
     }
 }

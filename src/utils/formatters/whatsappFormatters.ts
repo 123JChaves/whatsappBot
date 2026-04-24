@@ -1,7 +1,7 @@
 import { ListaJoia } from "../../models/ListaJoia";
-import { RotasAtribuidas } from "../../models/RotasAtribuidas";
+import { RotaAtribuida } from "../../models/RotaAtribuida";
 
-export function formatarEscalaParaWhatsApp(atribuicoes: RotasAtribuidas[], listaReferencia: ListaJoia): string {
+export function formatarEscalaParaWhatsApp(atribuicoes: RotaAtribuida[], listaReferencia: ListaJoia): string {
     // Garantir que 'dia' seja um objeto Date (evita erro caso venha como string do banco)
     const dataObj = new Date(listaReferencia.dia);
     

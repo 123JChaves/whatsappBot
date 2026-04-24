@@ -7,7 +7,7 @@ import { Empresa } from "./models/Empresa";
 import { Rota } from "./models/Rota";
 import { ListaRota } from "./models/ListaRota";
 import { OrdemJoinha } from "./models/OrdemJoinha";
-import { RotasAtribuidas } from "./models/RotasAtribuidas";
+import { RotaAtribuida } from "./models/RotaAtribuida";
 import { Endereco } from "./models/Endereco";
 import { Bairro } from "./models/Bairro";
 import { Cidade } from "./models/Cidade";
@@ -25,7 +25,7 @@ export const AppDataSource = new DataSource({
     synchronize: true,
     logging: true,
     entities: [Administrador, Usuario,  Motorista, Passageiro, Endereco, Bairro, Cidade, Estado, Pais,
-               Empresa, Rota, ListaJoia, ListaRota, OrdemJoinha, RotasAtribuidas],
+               Empresa, Rota, ListaJoia, ListaRota, OrdemJoinha, RotaAtribuida],
 
     subscribers: [],
     migrations: [__dirname+"/migrations/*.ts"],

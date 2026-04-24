@@ -1,7 +1,7 @@
 import { Client, Message } from "whatsapp-web.js";
 import { RegistroService } from "../service/whatsapp/RegistroService";
 import { EscalaService } from "../service/whatsapp/EscalaService";
-import { EmojiHelper } from "../utils/helpers/emojiHelper";
+import { EmojiHelper } from "../utils/helpers/EmojiHelper";
 import MotoristaService from "../service/motorista/MotoristaService";
 import 'dotenv/config';
 import cron from "node-cron"; // ACRESCENTADO PARA AGENDAMENTOS

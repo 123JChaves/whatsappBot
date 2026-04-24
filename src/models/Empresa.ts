@@ -10,6 +10,9 @@ export class Empresa {
 
     @Column()
     nome!: string;
+
+    @Column()
+    logo!: string;
     
     @ManyToOne(() => Rota, rota => rota.empresas)
     rota?: Rota;
