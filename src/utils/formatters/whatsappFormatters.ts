@@ -34,7 +34,7 @@ export function formatarEscalaParaWhatsApp(atribuicoes: RotaAtribuida[], listaRe
     }
 
     // LISTA 2: ROTAS DA TARDE
-    mensagem += `\n*☀️ ROTAS DA TARDE:*\n`; // Corrigido emoji de sol
+    mensagem += `\n*☀️ ROTAS DA TARDE:*\n`;
     if (rotasTarde.length > 0) {
         rotasTarde.forEach(a => {
             mensagem += `• ${a.rota.nome}: ${a.motorista.nome}\n`;

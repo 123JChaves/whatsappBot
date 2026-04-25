@@ -16,7 +16,7 @@ class MotoristaController {
 
     static async cadastrarMotorista(req: Request, res: Response) {
         const novoMotorista = await MotoristaService.cadastrarMotorista(req.body);
-        return res.status(200).json({
+        return res.status(201).json({
             message: 'Motorista cadastrado com sucesso!',
             novoMotorista
         });

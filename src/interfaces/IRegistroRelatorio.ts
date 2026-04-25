@@ -1,7 +1,7 @@
 interface IRegistroRelatorio {
     posicao: number;
     motorista: {
-        nome: string;
+    nome: string;
     };
 };
 

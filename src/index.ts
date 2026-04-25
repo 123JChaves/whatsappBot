@@ -9,6 +9,7 @@ import { RegistroService } from "./service/whatsapp/RegistroService";
 import rotasMotorista from "./routes/RotasMotorista";
 import rotasAdministrador from "./routes/RotasAdministrador";
 import middlewareErro from './middlewares/MiddlewareErro';
+import rotasPassageiro from './routes/RotasPassageiro';
 
 const app = express();
 app.use(express.json());
@@ -27,6 +28,7 @@ AppDataSource.initialize().then(() => {
 
     app.use(rotasMotorista);
     app.use(rotasAdministrador);
+    app.use(rotasPassageiro);
     app.use(middlewareErro);
 
     const PORTA = 8080;

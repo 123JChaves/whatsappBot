@@ -16,7 +16,7 @@ class AdministradorController {
 
     static async cadastrarAdministrador(req: Request, res: Response) {
         const novoAdministrador = await AdministradorService.cadastrarAdministrador(req.body);
-        return res.status(200).json({
+        return res.status(201).json({
             message: 'Administrador cadastrado com sucesso!',
             novoAdministrador
         });

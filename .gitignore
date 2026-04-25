@@ -145,3 +145,4 @@ vite.config.ts.timestamp-*
 # Others
 .wwebjs_auth/
 .wwebjs_cache/
+data-source.ts

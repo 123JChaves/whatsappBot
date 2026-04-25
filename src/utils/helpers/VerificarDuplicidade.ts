@@ -1,30 +1,33 @@
-import { ObjectLiteral, FindOptionsWhere } from "typeorm";
+import { FindOptionsWhere, ObjectLiteral } from "typeorm";
 import IDuplicidade from "../../interfaces/IDuplicidade";
 import RequisicaoInvalidaErro from "../../error/RequisicaoInvalida.400";
 
 const VerificarDuplicidade = async <T extends ObjectLiteral>(
-
     opcoes: IDuplicidade<T>
-
 ): Promise<void> => {
-
     const { repositorio, dados, idParaIgnorar } = opcoes;
-    const chaves = Object.keys(dados) as (keyof T)[];
-    const condicoes = chaves.map(chave => ({ [chave]: dados[chave] })
-    ) as FindOptionsWhere<T>[];
 
-    if(condicoes.length === 0) return;
+    // Em vez de mapear para um array (OR), usamos o objeto direto (AND)
+    const condicao = dados as FindOptionsWhere<T>;
 
-    const conflito = await repositorio.findOne({ where: condicoes });
-    if(conflito) {
-        const conflitoRegistro = conflito as Record<string, unknown>
-        if(idParaIgnorar === undefined || conflitoRegistro.id !== idParaIgnorar) {
-            const campoConflito = chaves.find((chave) => conflito[chave] === dados[chave]);
-            throw new RequisicaoInvalidaErro(
-                `O campo ${String(campoConflito)} já está cadastrado no sistema`
-            );
-        };
-    };
+    if (Object.keys(dados).length === 0) return;
+
+    // Busca um registro que combine todos os campos enviados
+    const conflito = await repositorio.findOne({ where: condicao });
+
+    if (conflito) {
+        const conflitoRegistro = conflito as Record<string, unknown>;
+        
+        if (idParaIgnorar === undefined || conflitoRegistro.id !== idParaIgnorar) {
+            // Personaliza a mensagem para casos compostos ou simples
+            const chaves = Object.keys(dados);
+            const mensagem = chaves.length > 1 
+                ? `Este registro já consta no sistema.`
+                : `O campo ${chaves[0]} já está cadastrado no sistema.`;
+
+            throw new RequisicaoInvalidaErro(mensagem);
+        }
+    }
 };
 
 export default VerificarDuplicidade;

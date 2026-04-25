@@ -1,7 +1,7 @@
 import { AppDataSource } from "../../data-source";
+import { Passageiro } from "../../models/Passageiro";
 import NaoEncontradoErro from "../../error/NaoEncontrado.404";
 import IPassageiro from "../../interfaces/IPassageiro";
-import { Passageiro } from "../../models/Passageiro";
 import validarCamposObrigatorios from "../../utils/helpers/VerificarCamposObrigatorios";
 import VerificarDuplicidade from "../../utils/helpers/VerificarDuplicidade";
 
