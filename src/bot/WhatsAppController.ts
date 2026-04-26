@@ -9,7 +9,7 @@ import cron from "node-cron"; // ACRESCENTADO PARA AGENDAMENTOS
 export class WhatsAppController {
     // Lista de IDs permitidos para o mesmo grupo físico
     private readonly IDs_PERMITIDOS = [
-        '203998179098859@lid',
+        process.env.JWT_ID_BOTSECRET,
         process.env.JWT_ID_GROUPSECRET || ''
     ];
     private cadastroAberto = false; // Controle de janela em memória
@@ -133,6 +133,34 @@ export class WhatsAppController {
         }
 
         const [acao, parametro] = comando.split(' ');
+
+        if (comando === '@motoristas') {
+            const motoristas = await MotoristaService.listarMotoristas();
+            
+            if (!motoristas || motoristas.length === 0) {
+                await msg.reply("📭 Nenhum motorista cadastrado.");
+                return true;
+            }
+
+            let relatorio = "*👥 LISTA DE MOTORISTAS*\n\n";
+            motoristas.forEach((m, i) => {
+                const status = m.ativo ? "✅" : "🚫";
+                relatorio += `${i + 1}. ${m.nome}\n   📱 ${m.telefoneWhatsApp} ${status}\n\n`;
+            });
+
+            // Pega o ID do grupo do seu arquivo .env
+            const grupoId = process.env.JWT_ID_GROUPSECRET;
+
+            if (grupoId) {
+                // Envia especificamente para o ID do grupo, ignorando de onde veio o comando
+                await this.client.sendMessage(grupoId, relatorio);
+            } else {
+                // Fallback: se o ID do grupo não estiver no .env, tenta mandar de volta de onde veio
+                await this.client.sendMessage(msg.from, relatorio);
+            }
+
+            return true;
+        }
 
         if (comando === '@abrir_cadastro') {
             this.cadastroAberto = true;

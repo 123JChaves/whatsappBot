@@ -1,15 +1,16 @@
 import 'reflect-metadata'; // Importante para o TypeORM
 import express from 'express';
-import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
+import { Client, LocalAuth } from 'whatsapp-web.js';
 import { AppDataSource } from "./data-source";
 import { EscalaService } from "./service/whatsapp/EscalaService";
 import { WhatsAppController } from './bot/WhatsAppController';
 import { RegistroService } from "./service/whatsapp/RegistroService";
+import middlewareErro from './middlewares/MiddlewareErro';
 import rotasMotorista from "./routes/RotasMotorista";
 import rotasAdministrador from "./routes/RotasAdministrador";
-import middlewareErro from './middlewares/MiddlewareErro';
 import rotasPassageiro from './routes/RotasPassageiro';
+import rotasEndereco from './routes/RotasEndereco';
 
 const app = express();
 app.use(express.json());
@@ -29,6 +30,7 @@ AppDataSource.initialize().then(() => {
     app.use(rotasMotorista);
     app.use(rotasAdministrador);
     app.use(rotasPassageiro);
+    app.use(rotasEndereco);
     app.use(middlewareErro);
 
     const PORTA = 8080;
