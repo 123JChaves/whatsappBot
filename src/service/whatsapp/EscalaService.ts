@@ -103,49 +103,95 @@ export class EscalaService {
         const limitePlantao = ehSegundaComum ? this.LIMITE_PLANTAO_SEGUNDA : this.LIMITE_PLANTAO_PADRAO;
 
         let texto = `*Escala dia ${dataReferencia.getDate()}/${dataReferencia.getMonth() + 1}* (${titulo})\n`;
-        
-        // Abertura do bloco de código para visual organizado
         texto += "```\n";
 
-        motoristas.forEach((reg, index) => {
-            // Criamos um objeto temporário com a posição corrigida para a formatação
-            const regFormatado = { ...reg, posicao: index + 1 };
-            texto += this.formatarLinhaPorRegra(regFormatado, tipoDia, limitePlantao, qtdMaxRotas);
-        });
+        // Criamos uma cópia para não afetar o banco de dados
+        let listaParaRelatorio = [...motoristas];
 
-        texto += "```"; // Fechamento do bloco de código
+        // Lógica para mover o Apoio (5º motorista) para depois das rotas
+        if (tipoDia === 'DIA_COMUM' && listaParaRelatorio.length >= 5) {
+            const apoio = listaParaRelatorio.splice(4, 1)[0]; // Remove o 5º (índice 4)
+            // Insere após o limite de rotas (ou no fim se a lista for curta)
+            const novaPosicao = Math.min(qtdMaxRotas, listaParaRelatorio.length);
+            listaParaRelatorio.splice(novaPosicao, 0, apoio);
+        }
+
+        listaParaRelatorio.forEach((reg, index) => {
+        // Agora enviamos 6 argumentos para bater com a nova definição
+        texto += this.formatarLinhaPorRegra(
+            reg as any, 
+            tipoDia, 
+            limitePlantao, 
+            qtdMaxRotas, 
+            index + 1, 
+            motoristas
+        );
+    });
+
+        texto += "```";
         return texto;
     }
 
-    private formatarLinhaPorRegra(reg: IRegistroRelatorio, tipo: TipoDia, limite: number, qtdMax: number): string {
-        const { posicao: p, motorista: { nome } } = reg;
 
+    private formatarLinhaPorRegra(
+        reg: IRegistroRelatorio, 
+        tipo: TipoDia, 
+        limite: number, 
+        qtdMax: number, 
+        posicaoAtual: number,
+        listaOriginal: OrdemJoinha[]
+    ): string {
+        const { motorista: { nome } } = reg;
+
+        // --- LÓGICA DIA COMUM ---
+        if (tipo === 'DIA_COMUM') {
+            // 1. Bloco de Plantão (1 a 4 ou 1 a 5 na segunda)
+            if (posicaoAtual <= limite) {
+                const header = (posicaoAtual === 1) ? `*Plantão*\n` : "";
+                return `${header}${posicaoAtual} ${nome}\n`;
+            }
+
+            // 2. Bloco de Rota (Aparece se houver motoristas além do plantão)
+            if (posicaoAtual > limite && posicaoAtual <= qtdMax) {
+                const header = (posicaoAtual === limite + 1) ? `\n*Rota*\n` : "";
+                return `${header}${posicaoAtual} ${nome}\n`;
+            }
+
+            // 3. Apoio Automático (Somente após completar TODAS as rotas)
+            if (posicaoAtual === qtdMax + 1) {
+                return `\n${nome} (Apoio/Plantão)\n`;
+            }
+
+            // 4. Bloco de Backup (O que sobrar após o Apoio)
+            const headerBackup = (posicaoAtual === qtdMax + 2) ? `\n*Backup*\n` : "";
+            return `${headerBackup}${nome}\n`;
+        }
+
+        // --- LÓGICA DIA LIVRE (Sem Apoio) ---
         if (tipo === 'DIA_LIVRE') {
-            let linha = "";
-            if (p === 1) linha += `*Plantão dia ${new Date().getDate()}*\n*00h até as rotas*\n`;
+            let linhaLivre = "";
+            // Cabeçalho de Plantão para os 5 primeiros
+            if (posicaoAtual === 1) linhaLivre += `*Plantão*\n`;
             
-            if (p <= 5) return `${linha}*${p} ${nome}*\n`;
-            
-            if (p > 5 && p <= qtdMax) {
-                const header = (p === 6) ? `\n*Rotas até 06h*\n` : "";
-                return `${header}*${p} ${nome}*\n`;
-            } 
-            
-            const headerPl = (p === qtdMax + 1) ? `\n*Horário livre*\n` : "";
-            return `${headerPl}- ${nome}\n`;
+            if (posicaoAtual <= 5) {
+                return `${linhaLivre}${posicaoAtual} ${nome}\n`;
+            }
+
+            // Título de Rotas a partir do 6º
+            if (posicaoAtual > 5 && posicaoAtual <= qtdMax) {
+                const header = (posicaoAtual === 6) ? `\n*Rotas*\n` : "";
+                return `${header}${posicaoAtual} ${nome}\n`;
+            }
+
+            // Se passar do número de rotas, pula direto para Backup/Livre (SEM APOIO)
+            const headerBk = (posicaoAtual === qtdMax + 1) ? `\n*Backup*\n` : "";
+            return `${headerBk}${nome}\n`;
         }
 
-        // Lógica DIA_COMUM com regra de Apoio
-        if (p <= limite) return `${p} ${nome}\n`;
-        if (p > limite && p <= qtdMax) {
-            const headerRotas = (p === limite + 1) ? `\nRotas\n` : "";
-            return `${headerRotas}${p} ${nome}\n`;
-        }
-        if (p === qtdMax + 1) return `\n${nome} (Apoio/Plantão)\n`;
-        
-        const headerBackup = (p === qtdMax + 2) ? `\nBackup\n` : "";
-        return `${headerBackup}${nome}\n`;
+        return `${posicaoAtual} ${nome}\n`;
     }
+
+
 
 
     // Auxiliares de Consulta
@@ -166,16 +212,15 @@ export class EscalaService {
      * Válidos primeiro, Penalizados (posicao 0) por último.
      */
     private async obterMotoristasOrdenados(listaId: number): Promise<OrdemJoinha[]> {
-        const todos = await this.ordemRepositorio.find({
+    // Aqui transformamos os registros individuais no ARRAY que você precisa
+        return await this.ordemRepositorio.find({
             where: { listaJoia: { id: listaId } },
             relations: ["motorista"],
-            order: { id: "ASC" } // Ordem de chegada
+            order: { 
+                isPenalizado: "ASC", // Quem não errou vem primeiro
+                horaDoJoinha: "ASC"  // Ordem de chegada exata (milissegundos)
+            }
         });
-
-        const validos = todos.filter(m => m.posicao !== 0);
-        const penalizados = todos.filter(m => m.posicao === 0);
-
-        return [...validos, ...penalizados];
     }
 
     async definirTipoDiaManual(dataBr: string, tipo: TipoDia): Promise<void> {

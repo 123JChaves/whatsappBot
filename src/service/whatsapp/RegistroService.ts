@@ -29,30 +29,33 @@ export class RegistroService {
         }
     }
 
-    /**
-     * Registro Normal (Janela das 20h00)
-     */
-    async adicionarJoinha(whatsappId: string, listaId: number, client: Client): Promise<OrdemJoinha> {
+        /**
+         * Registro Normal (Janela das 20h00)
+         */
+        async adicionarJoinha(whatsappId: string, listaId: number, client: Client): Promise<OrdemJoinha> {
         const telefone = await this.obterNumeroReal(whatsappId, client);
-        const hoje = this.obterDataHoje();
         const motorista = await this.buscarMotoristaAtivoOuFalhar(telefone);
         
-        await this.verificarBanimento(motorista.id, hoje);
+        // Aqui garantimos que ele entre na "Lista Específica" do dia
         const listaAtiva = await this.buscarListaOuFailhar(listaId);
+
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
-        const novoJoinha = this.ordemRepositorio.create({ 
-            posicao: 1, // Marcador de joinha válido
-            motorista: motorista, 
-            listaJoia: listaAtiva,
-            // queimouLargada: false (assumindo que existe este campo na sua Entity)
+        const novoJoinha = this.ordemRepositorio.create({
+            posicao: 1, 
+            isPenalizado: false,
+            motorista: motorista,
+            listaJoia: listaAtiva, // Aqui ele é "guardado" na lista correta
+            horaDoJoinha: new Date() // O carimbo do evento
         });
+
         return await this.ordemRepositorio.save(novoJoinha);
     }
 
-    /**
+
+        /**
      * Registro de Penalidade (Janela 19:57 - 19:59)
-     * Não bane, mas marca para ser jogado ao fim da fila no EscalaService
+     * Usa o campo isPenalizado do banco para controle
      */
     async adicionarJoinhaPenalizado(whatsappId: string, listaId: number, client: Client): Promise<OrdemJoinha> {
         const telefone = await this.obterNumeroReal(whatsappId, client);
@@ -63,14 +66,16 @@ export class RegistroService {
         const listaAtiva = await this.buscarListaOuFailhar(listaId);
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
-        const novoJoinha = this.ordemRepositorio.create({ 
-            posicao: 0, // Marcador de joinha penalizado
-            motorista: motorista, 
+        const novoJoinha = this.ordemRepositorio.create({
+            posicao: 1,           // Mantemos 1 para não quebrar lógicas de contagem
+            isPenalizado: true,      // <--- AQUI: Ativando a flag da sua tabela
+            motorista: motorista,
             listaJoia: listaAtiva,
-            // queimouLargada: true (assumindo que existe este campo na sua Entity)
         });
+
         return await this.ordemRepositorio.save(novoJoinha);
     }
+
 
     async registrarBanimentoAntecipado(whatsappId: string, client: Client): Promise<void> {
         const telefone = await this.obterNumeroReal(whatsappId, client);
@@ -104,6 +109,85 @@ export class RegistroService {
         }
         return lista;
     }
+
+    /**
+     * ADICIONAR MANUALMENTE: Coloca o motorista no final da fila atual
+     */
+    public async adicionarMotoristaManualmente(telefone: string, listaId: number): Promise<OrdemJoinha> {
+        const motorista = await MotoristaService.buscarPorTelefone(telefone);
+        if (!motorista) throw new Error("Motorista não cadastrado.");
+        if (!motorista.ativo) throw new Error("Motorista inativo.");
+
+        const listaAtiva = await this.buscarListaOuFailhar(listaId);
+        await this.verificarDuplicidadeNaLista(motorista.id, listaId);
+
+        const novoJoinha = this.ordemRepositorio.create({
+            posicao: 1,
+            isPenalizado: false,
+            motorista: motorista,
+            listaJoia: listaAtiva,
+            horaDoJoinha: new Date() // Final da fila
+        });
+
+        return await this.ordemRepositorio.save(novoJoinha);
+    }
+
+
+        /**
+     * REMOVER: Deleta o registro do joinha da lista específica
+     */
+    async removerMotoristaDaLista(telefone: string, listaId: number): Promise<void> {
+        const motorista = await MotoristaService.buscarPorTelefone(telefone);
+        if (!motorista) throw new Error("Motorista não cadastrado.");
+        await this.ordemRepositorio.delete({ motorista: { id: motorista.id }, listaJoia: { id: listaId } });
+    }
+
+    /**
+     * INSERIR POSIÇÃO ESPECÍFICA: Recalcula a ordem baseada no tempo
+     */
+    async inserirEmPosicaoEspecifica(telefone: string, listaId: number, posicaoAlvo: number): Promise<void> {
+        const motorista = await MotoristaService.buscarPorTelefone(telefone);
+        if (!motorista) throw new Error("Motorista não cadastrado.");
+
+        // 1. Pega a lista atual ordenada
+        const listaAtual = await this.ordemRepositorio.find({
+            where: { listaJoia: { id: listaId } },
+            order: { isPenalizado: "ASC", horaDoJoinha: "ASC" },
+            relations: ["motorista"]
+        });
+
+        // 2. Remove o motorista se ele já estiver na lista (para reordenar)
+        const listaFiltrada = listaAtual.filter(item => item.motorista.id !== motorista.id);
+
+        // 3. Define o horário de referência (baseado no registro que está na posição alvo)
+        // Se a lista estiver vazia ou a posição for maior que a lista, vai para o fim.
+        let novoHorario: Date;
+        if (listaFiltrada.length >= posicaoAlvo) {
+            // Pega o horário de quem está atualmente na posição e subtrai 1 segundo
+            const referencia = listaFiltrada[posicaoAlvo - 1].horaDoJoinha;
+            novoHorario = new Date(referencia.getTime() - 1000); 
+        } else {
+            novoHorario = new Date();
+        }
+
+        // 4. Salva ou atualiza o registro
+        let registro = await this.ordemRepositorio.findOneBy({ motorista: { id: motorista.id }, listaJoia: { id: listaId } });
+        
+        if (registro) {
+            registro.horaDoJoinha = novoHorario;
+            registro.isPenalizado = false;
+        } else {
+            registro = this.ordemRepositorio.create({
+                posicao: 1,
+                isPenalizado: false,
+                motorista,
+                listaJoia: { id: listaId },
+                horaDoJoinha: novoHorario
+            });
+        }
+        await this.ordemRepositorio.save(registro);
+    }
+
 
     // Método auxiliar para garantir que qualquer data enviada vire "meia-noite"
     private formatarDataParaMeiaNoite(data: Date): Date {
