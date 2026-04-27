@@ -168,25 +168,34 @@ export class EscalaService {
         }
 
         // --- LÓGICA DIA LIVRE (Sem Apoio) ---
+        // --- LÓGICA DIA_LIVRE (Ajustada com horários) ---
         if (tipo === 'DIA_LIVRE') {
             let linhaLivre = "";
-            // Cabeçalho de Plantão para os 5 primeiros
-            if (posicaoAtual === 1) linhaLivre += `*Plantão*\n`;
+
+            // 1. Plantão (1 ao 5): Até o fim das rotas
+            if (posicaoAtual === 1) linhaLivre += `*Plantão (até o fim das rotas)*\n`;
             
             if (posicaoAtual <= 5) {
                 return `${linhaLivre}${posicaoAtual} ${nome}\n`;
             }
 
-            // Título de Rotas a partir do 6º
-            if (posicaoAtual > 5 && posicaoAtual <= qtdMax) {
-                const header = (posicaoAtual === 6) ? `\n*Rotas*\n` : "";
+            // 2. Rotas (6 ao 9): Até as 06h00 da manhã
+            if (posicaoAtual > 5 && posicaoAtual <= 9) {
+                const header = (posicaoAtual === 6) ? `\n*Plantão (das 04h00 às 06h00)*\n` : "";
                 return `${header}${posicaoAtual} ${nome}\n`;
             }
 
-            // Se passar do número de rotas, pula direto para Backup/Livre (SEM APOIO)
-            const headerBk = (posicaoAtual === qtdMax + 1) ? `\n*Backup*\n` : "";
-            return `${headerBk}${nome}\n`;
+            // 3. Outras Rotas (Se houver qtdMax maior que 9)
+            if (posicaoAtual > 9 && posicaoAtual <= qtdMax) {
+                const header = (posicaoAtual === 10) ? `\n*Livre*\n` : "";
+                return `${header}${posicaoAtual} ${nome}\n`;
+            }
+
+            // 4. Backup (Tudo que sobrar após o limite de rotas)
+            //const headerBk = (posicaoAtual === qtdMax + 1) ? `\n*Backup*\n` : "";
+            //sreturn `${headerBk}${nome}\n`;
         }
+
 
         return `${posicaoAtual} ${nome}\n`;
     }
