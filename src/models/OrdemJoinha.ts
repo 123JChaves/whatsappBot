@@ -20,6 +20,10 @@ export class OrdemJoinha {
     @ManyToOne(() => ListaJoia, (lista) => lista.ordem_joinha, { nullable: false })
     listaJoia!: ListaJoia;
 
-    @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
+    @Column({ 
+    type: "timestamp", 
+    precision: 6, // Define a precisão para milissegundos
+    default: () => "CURRENT_TIMESTAMP(3)" // Garante que o MySQL gere o tempo com milissegundos
+    })
     horaDoJoinha!: Date;
 }

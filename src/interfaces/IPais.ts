@@ -1,4 +1,5 @@
 interface IPais {
-    nome: string
+    id?: number;
+    nome: string;
 }
 export default IPais;

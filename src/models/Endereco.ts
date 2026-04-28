@@ -21,7 +21,7 @@ export class Endereco{
         cascade: ["insert", "update"]
     })
     @JoinColumn({name: 'bairroId'})
-    bairro!: Bairro;
+    bairro?: Bairro;
 
     @ManyToMany(() => Passageiro, passageiro => passageiro.endereco)
     passageiro?: Passageiro[];

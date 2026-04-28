@@ -11,6 +11,8 @@ import rotasMotorista from "./routes/RotasMotorista";
 import rotasAdministrador from "./routes/RotasAdministrador";
 import rotasPassageiro from './routes/RotasPassageiro';
 import rotasEndereco from './routes/RotasEndereco';
+import rotasBairro from './routes/RotasBairro';
+import rotasCidade from './routes/RotasCidade';
 
 const app = express();
 app.use(express.json());
@@ -31,6 +33,8 @@ AppDataSource.initialize().then(() => {
     app.use(rotasAdministrador);
     app.use(rotasPassageiro);
     app.use(rotasEndereco);
+    app.use(rotasBairro);
+    app.use(rotasCidade);
     app.use(middlewareErro);
 
     const PORTA = 8080;

@@ -52,7 +52,7 @@ class EnderecoService {
     // Service para cadastrar endereco:
     static async cadastrarEndereco(dados: IEndereco): Promise<Endereco> {
         validarCamposObrigatorios<Endereco>(dados as Endereco, 
-            ['nome', 'numero', 'bairro']
+            ['nome', 'numero']
         );
 
         await VerificarDuplicidade<Endereco>({
@@ -60,21 +60,21 @@ class EnderecoService {
             dados: {
                 nome: dados.nome,
                 numero: dados.numero,
-                bairro: { nome: dados.bairro.nome } as Bairro,
+                bairro: { nome: dados.bairro?.nome } as Bairro,
             },
         });
 
         const bairroFinal = await BuscarOuCriar<Bairro>({
             repositorio: this.bairroRepositorio,
-            dados: dados.bairro,
+            dados: dados.bairro as Bairro,
             criterio: { 
-                nome: dados.bairro.nome,
-                // Se houver cidade aninhada, você pode buscar por ela também:
-                cidade: { nome: dados.bairro.cidade?.nome } 
+                nome: dados.bairro?.nome,
+                // É possível buscar uma cidade aninhada também:
+                cidade: { nome: dados.bairro?.cidade?.nome } 
             },
         });
 
-        const novoEndereco = await this.enderecoRepositorio.create({
+        let novoEndereco = this.enderecoRepositorio.create({
             ...dados,
             bairro: bairroFinal as Bairro
         });
@@ -99,7 +99,7 @@ class EnderecoService {
                 dados: {
                     nome: dados.nome ?? enderecoEditado.nome,
                     numero: dados.numero ?? enderecoEditado.numero,
-                    bairro: dados.bairro ?? enderecoEditado.bairro
+                    bairro: dados.bairro as Bairro ?? enderecoEditado.bairro
                 },
                 idParaIgnorar: id,
             });
@@ -110,15 +110,15 @@ class EnderecoService {
         if(dados.bairro) {
             bairroFinal = await BuscarOuCriar<Bairro>({
                 repositorio: this.bairroRepositorio,
-                dados: dados.bairro,
+                dados: dados.bairro as Bairro,
                 criterio: {
-                    nome: dados.bairro.nome,
-                    cidade: { nome: dados.bairro.cidade?.nome ?? enderecoEditado.bairro!.cidade?.nome}
+                    nome: dados.bairro?.nome,
+                    cidade: { nome: dados.bairro?.cidade?.nome ?? enderecoEditado.bairro?.cidade?.nome}
                 },
             }) as Bairro;
         };
 
-        this.enderecoRepositorio.merge(enderecoEditado, { ...dados, bairro: bairroFinal });
+        this.enderecoRepositorio.merge(enderecoEditado, dados, {bairro: bairroFinal });
         return await this.enderecoRepositorio.save(enderecoEditado);
     };
 

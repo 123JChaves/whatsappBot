@@ -1,33 +1,34 @@
-import { FindOptionsWhere, ObjectLiteral } from "typeorm";
-import IDuplicidade from "../../interfaces/IDuplicidade";
-import RequisicaoInvalidaErro from "../../error/RequisicaoInvalida.400";
+import { FindOptionsWhere, ObjectLiteral, Not } from "typeorm"; 
+import IDuplicidade from "../../interfaces/IDuplicidade"; 
+import RequisicaoInvalidaErro from "../../error/RequisicaoInvalida.400"; 
 
-const VerificarDuplicidade = async <T extends ObjectLiteral>(
-    opcoes: IDuplicidade<T>
-): Promise<void> => {
-    const { repositorio, dados, idParaIgnorar } = opcoes;
+/**
+ * T agora é restrito a objetos que possuem a propriedade 'id'
+ */
+const VerificarDuplicidade = async <T extends ObjectLiteral & { id: string | number }>( 
+  opcoes: IDuplicidade<T> 
+): Promise<void> => { 
+  const { repositorio, dados, idParaIgnorar } = opcoes; 
 
-    // Em vez de mapear para um array (OR), usamos o objeto direto (AND)
-    const condicao = dados as FindOptionsWhere<T>;
+  if (Object.keys(dados).length === 0) return; 
 
-    if (Object.keys(dados).length === 0) return;
+  const condicao: FindOptionsWhere<T> = { ...dados } as FindOptionsWhere<T>; 
 
-    // Busca um registro que combine todos os campos enviados
-    const conflito = await repositorio.findOne({ where: condicao });
+  if (idParaIgnorar !== undefined) {
+    // Usamos o tipo de 'id' definido em FindOptionsWhere para manter a tipagem estrita
+    condicao.id = Not(idParaIgnorar) as FindOptionsWhere<T>['id'];
+  }
 
-    if (conflito) {
-        const conflitoRegistro = conflito as Record<string, unknown>;
-        
-        if (idParaIgnorar === undefined || conflitoRegistro.id !== idParaIgnorar) {
-            // Personaliza a mensagem para casos compostos ou simples
-            const chaves = Object.keys(dados);
-            const mensagem = chaves.length > 1 
-                ? `Este registro já consta no sistema.`
-                : `O campo ${chaves[0]} já está cadastrado no sistema.`;
+  const conflito = await repositorio.findOne({ where: condicao }); 
 
-            throw new RequisicaoInvalidaErro(mensagem);
-        }
-    }
-};
+  if (conflito) { 
+    const chaves = Object.keys(dados); 
+    const mensagem = chaves.length > 1 
+      ? `Este registro já consta no sistema.` 
+      : `O campo ${chaves[0]} já está cadastrado no sistema.`; 
+      
+    throw new RequisicaoInvalidaErro(mensagem); 
+  } 
+}; 
 
 export default VerificarDuplicidade;

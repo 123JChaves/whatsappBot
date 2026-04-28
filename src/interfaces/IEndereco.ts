@@ -1,10 +1,10 @@
-import { Bairro } from "../models/Bairro";
+import IBairro from "./IBairro";
 
 interface IEndereco {
-    id: number,
+    id?: number,
     nome: string,
     numero: number,
-    bairro: Bairro;
+    bairro?: IBairro;
 };
 
 export default IEndereco;

@@ -1,6 +1,7 @@
 import IEstado from "./IEstado";
 
 interface ICidade {
+    id?: number;
     nome: string;
     estado: IEstado;
 };
