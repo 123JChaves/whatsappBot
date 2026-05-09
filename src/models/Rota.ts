@@ -21,9 +21,6 @@ export class Rota {
     @Column()
     tipo_rota!: 'ROTA_TARDE' | 'ROTA_MADRUGADA';
 
-    @Column({ default: 'COMUM' })
-    tipo!: 'COMUM' | 'APOIO';
-
     @OneToMany(() => Empresa, empresa => empresa.rota)
     empresas!: Empresa[];
 

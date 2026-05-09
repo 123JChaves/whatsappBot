@@ -1,9 +1,9 @@
-import { AppDataSource } from "../../data-source";
-import { Motorista } from "../../models/Motorista";
-import NaoEncontradoErro from "../../error/NaoEncontrado.404";
-import IMotorista from "../../interfaces/IMotorista";
-import validarCamposObrigatorios from "../../utils/helpers/VerificarCamposObrigatorios";
-import VerificarDuplicidade from "../../utils/helpers/VerificarDuplicidade";
+import { AppDataSource } from "../data-source";
+import { Motorista } from "../models/Motorista";
+import NaoEncontradoErro from "../error/NaoEncontrado.404";
+import IMotorista from "../interfaces/IMotorista";
+import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
+import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 
 class MotoristaService {
     private static motoristaRepositorio = AppDataSource.getRepository(Motorista);
@@ -74,7 +74,7 @@ class MotoristaService {
         };
 
         if(dados.telefoneWhatsApp) {
-            await VerificarDuplicidade<IMotorista>({
+            await VerificarDuplicidade<Motorista>({
                 repositorio: this.motoristaRepositorio,
                 dados:{
                     telefoneWhatsApp: dados.telefoneWhatsApp ?? motorista.telefoneWhatsApp

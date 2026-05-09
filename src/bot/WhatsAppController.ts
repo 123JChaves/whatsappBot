@@ -17,8 +17,8 @@ export class WhatsAppController {
 
     constructor(
         private client: Client,
-        private registroService: RegistroService,
-        private escalaService: EscalaService
+        public registroService: RegistroService,
+        public escalaService: EscalaService
     ) {
     this.grupoId = process.env.JWT_ID_GROUPSECRET || '';
     }
@@ -280,5 +280,48 @@ export class WhatsAppController {
     }
 
     return false;
-  }
+
+    }
+
+    public setCadastroStatus(status: boolean): void {
+        this.cadastroAberto = status;
+        console.log(`[BOT] Cadastro alterado via App para: ${status}`);
+    }
+
+    public async enviarMensagemExterna(titulo: string, conteudo: string): Promise<void> {
+        if (!this.grupoId) {
+            console.error("❌ Erro: grupoId não definido no WhatsAppController");
+            throw new Error("ID do grupo não configurado.");
+        }
+
+        try {
+            const mensagem = `*${titulo}*\n\`\`\`\n${conteudo}\n\`\`\``;
+            console.log(`🤖 Bot enviando para ${this.grupoId}...`);
+            
+            await this.client.sendMessage(this.grupoId, mensagem);
+            
+            console.log("✅ Mensagem enviada ao WhatsApp!");
+        } catch (err: any) {
+            console.error("❌ Falha crítica ao enviar para o WhatsApp:", err.message);
+            throw err;
+        }
+    }
+
+
+    // No WhatsAppController.ts
+    // Adicione estes métodos para o App chamar:
+
+    public async dispararEscalaManual(): Promise<string> {
+        const lista = await this.registroService.buscarOuCriarListaDoDia();
+        const relatorio = await this.escalaService.gerarEscalaCompleta(lista.id);
+        await this.enviarMensagemExterna("📋 ESCALA (VIA APP)", relatorio);
+        return relatorio;
+    }
+
+    public async resetarFilaDoDia(): Promise<void> {
+        const lista = await this.registroService.buscarOuCriarListaDoDia();
+        // Supondo que você tenha um método para limpar a lista
+        await this.registroService.limparLista(lista.id); 
+        await this.enviarMensagemExterna("🧹 SISTEMA", "A lista de hoje foi resetada pelo adm.");
+    }
 }

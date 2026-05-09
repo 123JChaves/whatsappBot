@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
-import PassageiroService from "../service/passageiro/PassageiroService";
+import PassageiroService from "../service/PassageiroService";
 
 class PassageiroController {
 
     static async listarPassageiros(req: Request, res: Response) {
-
         const passageiros = await PassageiroService.listarPassageiros();
         return res.status(200).json(passageiros);
     };

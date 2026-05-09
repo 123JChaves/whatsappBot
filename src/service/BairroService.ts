@@ -1,11 +1,11 @@
-import { AppDataSource } from "../../../data-source";
-import NaoEncontradoErro from "../../../error/NaoEncontrado.404";
-import IBairro from "../../../interfaces/IBairro";
-import { Bairro } from "../../../models/Bairro";
-import { Cidade } from "../../../models/Cidade";
-import BuscarOuCriar from "../../../utils/helpers/BuscarOuCriar";
-import validarCamposObrigatorios from "../../../utils/helpers/VerificarCamposObrigatorios";
-import VerificarDuplicidade from "../../../utils/helpers/VerificarDuplicidade";
+import { AppDataSource } from "../data-source";
+import { Bairro } from "../models/Bairro";
+import { Cidade } from "../models/Cidade";
+import NaoEncontradoErro from "../error/NaoEncontrado.404";
+import IBairro from "../interfaces/IBairro";
+import BuscarOuCriar from "../utils/helpers/BuscarOuCriar";
+import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
+import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 
 class BairroService {
 
@@ -54,31 +54,28 @@ class BairroService {
 
     // Service para cadastrar bairro:
     static async cadastrarBairro(dados: IBairro): Promise<Bairro> {
-        validarCamposObrigatorios<IBairro>(dados, 
-            ['nome']
-        );
-
-        await VerificarDuplicidade<Bairro>({
-            repositorio: this.bairroRepositorio,
-            dados: {
-                nome: dados.nome,
-                cidade: { nome: dados.cidade?.nome } as Cidade,
-            },
-        });
+        validarCamposObrigatorios<IBairro>(dados, ['nome']);
 
         const cidadeFinal = await BuscarOuCriar<Cidade>({
             repositorio: this.cidadeRepositorio,
             dados: dados.cidade as Cidade,
             criterio: { 
-                nome: dados.cidade?.nome,
-                // É possível buscar um estado aninhado também:
+                nome: dados.cidade?.nome, 
                 estado: { nome: dados.cidade?.estado?.nome } 
             }
         });
 
-        let novoBairro = this.bairroRepositorio.create({
-            ...dados,
-            cidade: cidadeFinal as Cidade
+        await VerificarDuplicidade<Bairro>({
+            repositorio: this.bairroRepositorio,
+            dados: { 
+                nome: dados.nome, 
+                cidade: cidadeFinal as Cidade
+            },
+        });
+
+        const novoBairro = this.bairroRepositorio.create({ 
+            ...dados, 
+            cidade: cidadeFinal 
         });
 
         return await this.bairroRepositorio.save(novoBairro);
@@ -86,44 +83,50 @@ class BairroService {
 
     // Service para editar bairro:
     static async editarBairro(id: number, dados: Partial<IBairro>): Promise<Bairro> {
-        const bairroEditado = await this.bairroRepositorio.findOne({
-            where: { id },
-            relations: [ 'cidade' ]
+        const bairroAtual = await this.bairroRepositorio.findOne({ 
+            where: { id }, 
+            relations: ['cidade', 'cidade.estado']
         });
 
-        if(!bairroEditado) {
-            throw new NaoEncontradoErro('Bairro não encontrado para a edição!')
-        };
+        if (!bairroAtual) {
+            throw new NaoEncontradoErro('Bairro não encontrado para a edição!');
+        }
 
-        if(dados.nome || dados.cidade) {
-            await VerificarDuplicidade<Bairro>({
-                repositorio: this.bairroRepositorio,
-                dados: {
-                    nome: dados.nome ?? bairroEditado.nome,
-                    cidade: (dados.cidade ?? bairroEditado.cidade) as Cidade,
-                },
-                idParaIgnorar: id,
-            });
-        };
+        let cidadeFinal = bairroAtual.cidade;
 
-        let cidadeFinal = bairroEditado.cidade;
-        
-        if(dados.cidade) {
+        // 1. Se uma nova cidade foi enviada, resolvemos ela primeiro
+        if (dados.cidade) {
             cidadeFinal = await BuscarOuCriar<Cidade>({
                 repositorio: this.cidadeRepositorio,
                 dados: dados.cidade as Cidade,
-                criterio: {
-                    nome: dados.cidade?.nome,
-                    // Alterado de 'cidade' para 'estado' para bater com a Model Cidade
+                criterio: { 
+                    nome: dados.cidade.nome, 
                     estado: { 
-                        nome: dados.cidade.estado?.nome ?? bairroEditado.cidade?.estado?.nome
-                    }
+                        nome: dados.cidade.estado?.nome ?? bairroAtual.cidade?.estado?.nome 
+                    } 
                 },
             }) as Cidade;
-        };
+        }
 
-        this.bairroRepositorio.merge(bairroEditado, dados, {cidade: cidadeFinal});
-        return await this.bairroRepositorio.save(bairroEditado);
+        // 2. Agora verificamos duplicidade com o nome (novo ou antigo) + cidade (nova ou antiga)
+        if (dados.nome || dados.cidade) {
+            await VerificarDuplicidade<Bairro>({
+                repositorio: this.bairroRepositorio,
+                dados: { 
+                    nome: dados.nome ?? bairroAtual.nome, 
+                    cidade: cidadeFinal 
+                },
+                idParaIgnorar: id,
+            });
+        }
+
+        // 3. Aplica as mudanças
+        this.bairroRepositorio.merge(bairroAtual, {
+            ...dados,
+            cidade: cidadeFinal
+        });
+
+        return await this.bairroRepositorio.save(bairroAtual);
     };
 
     // Service para excluir bairro:

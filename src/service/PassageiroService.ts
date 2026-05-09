@@ -1,9 +1,9 @@
-import { AppDataSource } from "../../data-source";
-import { Passageiro } from "../../models/Passageiro";
-import NaoEncontradoErro from "../../error/NaoEncontrado.404";
-import IPassageiro from "../../interfaces/IPassageiro";
-import validarCamposObrigatorios from "../../utils/helpers/VerificarCamposObrigatorios";
-import VerificarDuplicidade from "../../utils/helpers/VerificarDuplicidade";
+import { AppDataSource } from "../data-source";
+import { Passageiro } from "../models/Passageiro";
+import NaoEncontradoErro from "../error/NaoEncontrado.404";
+import IPassageiro from "../interfaces/IPassageiro";
+import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
+import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 
 class PassageiroService {
     private static passageiroRepositorio = AppDataSource.getRepository(Passageiro);
@@ -97,7 +97,7 @@ class PassageiroService {
         };
 
         if(dados.telefoneWhatsApp) {
-            await VerificarDuplicidade<IPassageiro>({
+            await VerificarDuplicidade<Passageiro>({
                 repositorio: this.passageiroRepositorio,
                 dados:{
                     telefoneWhatsApp: dados.telefoneWhatsApp ?? passageiro.telefoneWhatsApp

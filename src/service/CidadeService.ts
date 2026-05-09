@@ -1,11 +1,12 @@
-import { AppDataSource } from "../../../data-source";
-import { Cidade } from "../../../models/Cidade";
-import { Estado } from "../../../models/Estado";
-import ICidade from "../../../interfaces/ICidade";
-import NaoEncontradoErro from "../../../error/NaoEncontrado.404";
-import VerificarDuplicidade from "../../../utils/helpers/VerificarDuplicidade";
-import validarCamposObrigatorios from "../../../utils/helpers/VerificarCamposObrigatorios";
-import BuscarOuCriar from "../../../utils/helpers/BuscarOuCriar";
+import { AppDataSource } from "../data-source";
+import { Cidade } from "../models/Cidade";
+import { Estado } from "../models/Estado";
+import NaoEncontradoErro from "../error/NaoEncontrado.404";
+import ICidade from "../interfaces/ICidade";
+import BuscarOuCriar from "../utils/helpers/BuscarOuCriar";
+import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
+import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
+import IEstado from "../interfaces/IEstado";
 
 class CidadeService {
 
@@ -57,69 +58,73 @@ class CidadeService {
             ['nome']
         );
 
-        await VerificarDuplicidade<Cidade>({
-            repositorio: this.cidadeRepositorio,
-            dados: {
-                nome: dados.nome,
-                estado: {nome: dados.estado?.nome} as Estado,
-            },
-        });
-
         const estadoFinal = await BuscarOuCriar<Estado>({
             repositorio: this.estadoRepositorio,
             dados: dados.estado as Estado,
-            criterio: {
-                nome: dados.estado?.nome,
-                pais: {nome: dados.estado?.pais?.nome}
+            criterio: { 
+                nome: dados.estado?.nome, 
+                pais: { nome: dados.estado?.pais?.nome } 
             },
         });
 
-        let novaCidade = this.cidadeRepositorio.create({
-            ...dados,
-            estado: estadoFinal as Estado,
+        await VerificarDuplicidade<Cidade>({
+            repositorio: this.cidadeRepositorio,
+            dados: { 
+                nome: dados.nome, 
+                estado: estadoFinal as Estado,
+            },
         });
 
-        return await this.cidadeRepositorio.save(novaCidade)
+        const novaCidade = this.cidadeRepositorio.create({
+            ...dados,
+            estado: estadoFinal,
+        });
+
+        return await this.cidadeRepositorio.save(novaCidade);
     };
 
     // Service para editar cidade:
     static async editarCidade(id: number, dados: Partial<ICidade>): Promise<Cidade> {
-        const cidadeEditada = await this.cidadeRepositorio.findOne({
-            where: { id },
-            relations: [ 'estado' ],
+        const cidadeAtual = await this.cidadeRepositorio.findOne({ 
+            where: { id }, 
+            relations: ['estado', 'estado.pais'] 
         });
 
-        if(!cidadeEditada) {
+        if (!cidadeAtual) {
             throw new NaoEncontradoErro('Cidade não encontrada para a edição!');
-        };
+        }
 
-        if(dados.nome || dados.estado) {
+        let estadoFinal = cidadeAtual.estado;
+
+        if (dados.estado) {
+            estadoFinal = await BuscarOuCriar<IEstado>({
+                repositorio: this.estadoRepositorio,
+                dados: dados.estado as Estado,
+                criterio: { 
+                    nome: dados.estado.nome, 
+                    pais: { nome: dados.estado.pais?.nome ?? cidadeAtual.estado?.pais?.nome } 
+                },
+            }) as Estado;
+        }
+
+        if (dados.nome || dados.estado) {
             await VerificarDuplicidade<Cidade>({
                 repositorio: this.cidadeRepositorio,
-                dados: {
-                    nome: dados.nome ?? cidadeEditada.nome,
-                    estado: dados.estado as Estado ?? cidadeEditada.estado
+                dados: { 
+                    nome: dados.nome ?? cidadeAtual.nome, 
+                    estado: estadoFinal 
                 },
                 idParaIgnorar: id,
             });
-        };
+        }
 
-        let estadoFinal = cidadeEditada.estado;
+        this.cidadeRepositorio.merge(cidadeAtual, {
+            ...dados,
+            estado: estadoFinal
+        });
 
-        if(dados.estado) {
-            await BuscarOuCriar<Estado>({
-                repositorio: this.estadoRepositorio,
-                dados: dados.estado as Estado,
-                criterio: {
-                    nome: dados.estado?.nome,
-                    pais: { nome: dados.estado?.pais?.nome ?? cidadeEditada.estado?.pais?.nome },
-                },
-            }) as Estado;
-        };
-
-        this.cidadeRepositorio.merge(cidadeEditada, dados, {estado: estadoFinal});
-        return await this.cidadeRepositorio.save(cidadeEditada);
-    };
+        return await this.cidadeRepositorio.save(cidadeAtual);
+    }
 
     // Service para excluir cidade:
     static async deletarCidade(id: number): Promise<Cidade>{

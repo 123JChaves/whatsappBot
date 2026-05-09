@@ -22,8 +22,12 @@ export class Passageiro {
     @ManyToOne(() => Endereco, endereco => endereco.passageiro, { cascade: true })
     endereco!: Endereco;
 
-    @ManyToOne(() => Empresa, empresa => empresa.passageiros, { cascade: true })
-    empresa!: Empresa;
+    @ManyToOne(() => Empresa, empresa => empresa.passageiros, { 
+        cascade: true,
+        nullable: true,
+        onDelete: 'SET NULL'  
+    })
+    empresa?: Empresa;
 
     @Column({ default: false })
     solicitacao?: boolean;

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import MotoristaService from "../service/motorista/MotoristaService";
+import MotoristaService from "../service/MotoristaService";
 
 class MotoristaController {
 

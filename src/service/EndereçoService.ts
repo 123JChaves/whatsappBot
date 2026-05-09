@@ -1,11 +1,11 @@
-import { AppDataSource } from "../../data-source";
-import { Endereco } from "../../models/Endereco";
-import { Bairro } from "../../models/Bairro";
-import IEndereco from "../../interfaces/IEndereco";
-import NaoEncontradoErro from "../../error/NaoEncontrado.404";
-import validarCamposObrigatorios from "../../utils/helpers/VerificarCamposObrigatorios";
-import BuscarOuCriar from "../../utils/helpers/BuscarOuCriar";
-import VerificarDuplicidade from "../../utils/helpers/VerificarDuplicidade";
+import { AppDataSource } from "../data-source";
+import { Bairro } from "../models/Bairro";
+import { Endereco } from "../models/Endereco";
+import NaoEncontradoErro from "../error/NaoEncontrado.404";
+import IEndereco from "../interfaces/IEndereco";
+import BuscarOuCriar from "../utils/helpers/BuscarOuCriar";
+import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
+import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 
 class EnderecoService {
     private static enderecoRepositorio = AppDataSource.getRepository(Endereco);
@@ -69,7 +69,6 @@ class EnderecoService {
             dados: dados.bairro as Bairro,
             criterio: { 
                 nome: dados.bairro?.nome,
-                // É possível buscar uma cidade aninhada também:
                 cidade: { nome: dados.bairro?.cidade?.nome } 
             },
         });

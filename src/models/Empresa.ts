@@ -11,13 +11,15 @@ export class Empresa {
     @Column()
     nome!: string;
 
-    @Column()
-    logo!: string;
+    @Column({ unique: true })
+    cnpj!: string;
+
+    @Column({ nullable: true })
+    logo?: string;
     
     @ManyToOne(() => Rota, rota => rota.empresas)
     rota?: Rota;
 
     @OneToMany(() => Passageiro, passageiro => passageiro.empresa)
     passageiros?: Passageiro[];
-
 }
