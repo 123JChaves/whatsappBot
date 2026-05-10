@@ -5,6 +5,7 @@ interface IPassageiro {
     id: number;
     nome: string;
     telefoneWhatsApp: string;
+    ativo: boolean;
     endereco: Endereco;
     empresa: Empresa;
 }

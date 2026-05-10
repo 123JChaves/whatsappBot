@@ -14,6 +14,12 @@ class PassageiroController {
         return res.status(200).json(passageiro);
     };
 
+    static async listarDisponiveis(req: Request, res: Response) {
+        const { empresaId } = req.params;
+        const passageiros = await PassageiroService.listarDisponiveisPorEmpresa(Number(empresaId));
+        return res.status(200).json(passageiros);
+    };
+
     static async cadastrarPassageiro(req: Request, res: Response) {
         const novoPassageiro = await PassageiroService.cadastrarPassageiro(req.body);
         return res.status(201).json({

@@ -6,18 +6,13 @@ import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigator
 import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 
 class PaisService {
-
     private static paisRepositorio = AppDataSource.getRepository(Pais);
 
     // Rota para listar países:
-    static async listarPaises(): Promise<Pais[]>{
+    static async listarPaises(): Promise<Pais[]> {
         const paises = await this.paisRepositorio.find({
-            select: {
-                id: true,
-                nome: true
-            },
+            select: { id: true, nome: true },
         });
-
         return paises;
     };
 
@@ -25,44 +20,42 @@ class PaisService {
     static async mostrarUmPais(id: number): Promise<Pais> {
         const pais = await this.paisRepositorio.findOne({
             where: { id },
-            select: {
-                id: true,
-                nome: true
-            },
+            select: { id: true, nome: true },
         });
-
-        if(!pais) {
+        if (!pais) {
             throw new NaoEncontradoErro('Pais não econtrado no sistema!');
         };
-
         return pais;
     };
 
     // Rota para cadastrar um país:
-    static async cadastrarPais(dados: IPais): Promise<Pais>{
-        validarCamposObrigatorios<Pais>(dados as Pais, 
-            ['nome']
-        );
+    static async cadastrarPais(dados: IPais): Promise<Pais> {
+        validarCamposObrigatorios<Pais>(dados as Pais, ['nome']);
 
-        await VerificarDuplicidade<Pais>({
-            repositorio: this.paisRepositorio,
-            dados: { nome: dados.nome },
+        // 1. Lógica para evitar duplicação: busca pelo nome antes de criar
+        const paisExistente = await this.paisRepositorio.findOneBy({ 
+            nome: dados.nome 
         });
 
-        const novoPais = this.paisRepositorio.create(dados);
+        if (paisExistente) {
+            return paisExistente; // Se já existe, retorna o que tem o ID
+        }
 
+        // 2. Se não existir, valida duplicidade (opcional, já que o findOneBy resolve)
+        // e procede com o salvamento
+        const novoPais = this.paisRepositorio.create(dados);
         return await this.paisRepositorio.save(novoPais);
     };
 
     // Rota para editar um país:
-    static async editarPais(id: number, dados: Partial<IPais>): Promise<Pais>{
+    static async editarPais(id: number, dados: Partial<IPais>): Promise<Pais> {
         const paisAtualizado = await this.paisRepositorio.findOneBy({ id });
 
-        if(!paisAtualizado) {
+        if (!paisAtualizado) {
             throw new NaoEncontradoErro('Pais não encontrado para a edição');
         };
 
-        if(dados.nome) {
+        if (dados.nome) {
             await VerificarDuplicidade<Pais>({
                 repositorio: this.paisRepositorio,
                 dados: { nome: dados.nome },
@@ -70,21 +63,17 @@ class PaisService {
             });
         };
 
-        this.paisRepositorio.merge(paisAtualizado, dados );
-
+        this.paisRepositorio.merge(paisAtualizado, dados);
         return await this.paisRepositorio.save(paisAtualizado);
     };
 
     // Rota para deletar um país:
-    static async deletarPais(id: number): Promise<Pais>{
+    static async deletarPais(id: number): Promise<Pais> {
         const paisDeletado = await this.paisRepositorio.findOneBy({ id });
-
-        if(!paisDeletado) {
+        if (!paisDeletado) {
             throw new NaoEncontradoErro('País não encntrado para a exclusão!');
         };
-
         await this.paisRepositorio.remove(paisDeletado);
-
         return paisDeletado;
     };
 };

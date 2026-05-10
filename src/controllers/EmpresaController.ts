@@ -39,7 +39,12 @@ class EmpresaController {
 
     // Controller para cadastrar empresas:
     static async cadastrarEmpresa(req: Request, res: Response) {
-        const novaEmpresa = await EmpresaService.cadastrarEmpresa(req.body);
+        const dados = {
+            ...req.body,
+            logo: req.file ? req.file.filename : undefined
+        };
+
+        const novaEmpresa = await EmpresaService.cadastrarEmpresa(dados);
         return res.status(201).json({
             message: 'Empresa cadastrada com sucesso!',
             novaEmpresa
@@ -49,7 +54,12 @@ class EmpresaController {
     // Controller para editar empresa:
     static async editarEmpresa(req: Request, res: Response) {
         const { id } = req.params;
-        const empresaAtualizada = await EmpresaService.editarEmpresa(Number(id), req.body);
+        const dados = {            
+            ...req.body,
+            logo: req.file ? req.file.filename : undefined
+        };
+
+        const empresaAtualizada = await EmpresaService.editarEmpresa(Number(id), dados);
         return res.status(200).json({
             message: 'Empresa atualizada com sucesso',
             empresaAtualizada

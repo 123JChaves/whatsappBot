@@ -85,17 +85,34 @@ rotasWhatsapp.post('/whatsapp/enviar-lista-motoristas', verificarBot, async (req
  * 5. CONFIGURAR DIA (Feriados / Dias Livres)
  */
 rotasWhatsapp.post('/whatsapp/configurar-dia', verificarBot, async (req: Request, res: Response) => {
-    const { data, tipo } = req.body; // data: 'DD/MM/AAAA', tipo: 'DIA_LIVRE' | 'DIA_COMUM'
+    let { data, tipo } = req.body;
+
     if (!data || !tipo) return res.status(400).json({ error: "Data e tipo são obrigatórios." });
 
     try {
+        if (data === 'hoje') {
+            const d = new Date();
+            data = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        }
+
         await botInstance.escalaService.definirTipoDiaManual(data, tipo);
-        await botInstance.enviarMensagemExterna("📅 CONFIGURAÇÃO", `O dia *${data}* foi configurado como *${tipo}* via App.`);
+
+        const statusTexto = tipo === 'DIA_LIVRE' ? 'LIVRE' : 'COMUM';
+
+        // AJUSTE: Asteriscos colados para garantir o negrito
+        const mensagem = `📅 *CONFIGURAÇÃO DO DIA*\n\n` +
+                         `Data: ${data}\n` +
+                         `Tipo Dia: ${statusTexto}\n\n` +
+                         `_Alteração via *Link App*_`;
+
+        await botInstance.enviarMensagemExterna("SISTEMA", mensagem);
+
         return res.status(200).json({ message: "Calendário atualizado!" });
     } catch (error: any) {
         return res.status(500).json({ error: error.message });
     }
 });
+
 
 /**
  * 6. COMUNICADO LIVRE

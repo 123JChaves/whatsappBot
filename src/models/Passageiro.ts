@@ -38,6 +38,9 @@ export class Passageiro {
     @ManyToOne(() => Rota, rota => rota.passageiros, {})
     rota?: Rota;
 
+    @Column({ nullable: true })
+    ordem_na_rota?: number;
+
     @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
     dataDeRegistro!: Date;
     

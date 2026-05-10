@@ -5,8 +5,8 @@ import { OrdemJoinha } from "../../models/OrdemJoinha";
 import { Banimento } from "../../models/Banimento";
 import { IdentificadorLista } from "../../interfaces/ITipos";
 import { Client } from "whatsapp-web.js";
-import MotoristaService from "../motorista/MotoristaService";
-import AdministradorService from "../administrador/AdministradorService";
+import MotoristaService from "../MotoristaService";
+import AdministradorService from "../AdministradorService";
 
 export class RegistroService {
     private readonly ordemRepositorio = AppDataSource.getRepository(OrdemJoinha);
@@ -14,20 +14,33 @@ export class RegistroService {
     private readonly banimentoRepositorio = AppDataSource.getRepository(Banimento);
 
     /**
+     * Busca todos os motoristas que foram penalizados (queimaram a largada) em uma lista específica.
+     * Usado para o relatório único enviado após a janela de joinhas.
+     */
+    public async buscarMotoristasPenalizados(listaId: number): Promise<Motorista[]> {
+        const registros = await this.ordemRepositorio.find({
+            where: {
+                listaJoia: { id: listaId },
+                isPenalizado: true
+            },
+            relations: ["motorista"],
+            order: { horaDoJoinha: "ASC" }
+        });
+
+        return registros.map(reg => reg.motorista);
+    }
+
+    /**
      * LIMPAR LISTA: Remove todos os joinhas de uma lista específica
-     * Essencial para o controle via App Mobile
      */
     public async limparLista(listaId: number): Promise<void> {
-        // Verifica se a lista existe antes de tentar limpar
         await this.buscarListaOuFailhar(listaId);
-        
-        // Remove todos os registros de OrdemJoinha vinculados a este listaId
         await this.ordemRepositorio.delete({ listaJoia: { id: listaId } });
         console.log(`[SERVICE] Fila da lista ${listaId} foi zerada.`);
     }
 
     /**
-     * Registro Normal (Janela das 20h00)
+     * Registro Normal (Janela Oficial)
      */
     async adicionarJoinha(whatsappId: string, listaId: number, client: Client): Promise<OrdemJoinha> {
         const telefone = await this.obterNumeroReal(whatsappId, client);
@@ -37,25 +50,24 @@ export class RegistroService {
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
         const novoJoinha = this.ordemRepositorio.create({
-            posicao: 1,
+            posicao: 1, // A posição real é calculada pelo EscalaService no momento da geração
             isPenalizado: false,
             motorista: motorista,
             listaJoia: listaAtiva,
             horaDoJoinha: new Date()
         });
+
         return await this.ordemRepositorio.save(novoJoinha);
     }
 
     /**
-     * Registro de Penalidade (Janela 19:57 - 19:59)
+     * Registro de Penalidade (Queimou a largada)
      */
     async adicionarJoinhaPenalizado(whatsappId: string, listaId: number, client: Client): Promise<OrdemJoinha> {
         const telefone = await this.obterNumeroReal(whatsappId, client);
-        const hoje = this.obterDataHoje();
         const motorista = await this.buscarMotoristaAtivoOuFalhar(telefone);
-        
-        await this.verificarBanimento(motorista.id, hoje);
         const listaAtiva = await this.buscarListaOuFailhar(listaId);
+        
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
 
         const novoJoinha = this.ordemRepositorio.create({
@@ -65,9 +77,13 @@ export class RegistroService {
             listaJoia: listaAtiva,
             horaDoJoinha: new Date()
         });
+
         return await this.ordemRepositorio.save(novoJoinha);
     }
 
+    /**
+     * Registra um banimento para quem enviou mensagem de texto (não emoji) na janela proibida
+     */
     async registrarBanimentoAntecipado(whatsappId: string, client: Client): Promise<void> {
         const telefone = await this.obterNumeroReal(whatsappId, client);
         const hoje = this.obterDataHoje();
@@ -84,18 +100,20 @@ export class RegistroService {
             const novoBan = this.banimentoRepositorio.create({
                 dia: hoje,
                 motorista: motorista,
-                motivo: "Mensagem enviada antes das 20h00 (Janela proibida 19:57-19:59)"
+                motivo: "Mensagem enviada na janela de banimento (Queimou a largada)"
             });
             await this.banimentoRepositorio.save(novoBan);
         }
     }
 
+    /**
+     * Busca ou cria a lista para a data atual
+     */
     async buscarOuCriarListaDoDia(
         identificador: IdentificadorLista = 'CAPTURA_DIARIA',
         dataAlvo?: Date
     ): Promise<ListaJoia> {
         const dataBusca = dataAlvo ? this.formatarDataParaMeiaNoite(dataAlvo) : this.obterDataHoje();
-        
         let lista = await this.listaRepositorio.findOneBy({ dia: dataBusca });
 
         if (!lista) {
@@ -107,8 +125,7 @@ export class RegistroService {
 
     public async adicionarMotoristaManualmente(telefone: string, listaId: number): Promise<OrdemJoinha> {
         const motorista = await MotoristaService.buscarPorTelefone(telefone);
-        if (!motorista) throw new Error("Motorista não cadastrado.");
-        if (!motorista.ativo) throw new Error("Motorista inativo.");
+        if (!motorista || !motorista.ativo) throw new Error("Motorista não encontrado ou inativo.");
 
         const listaAtiva = await this.buscarListaOuFailhar(listaId);
         await this.verificarDuplicidadeNaLista(motorista.id, listaId);
@@ -120,17 +137,14 @@ export class RegistroService {
             listaJoia: listaAtiva,
             horaDoJoinha: new Date()
         });
+
         return await this.ordemRepositorio.save(novoJoinha);
     }
 
     async removerMotoristaDaLista(telefone: string, listaId: number): Promise<void> {
         const motorista = await MotoristaService.buscarPorTelefone(telefone);
         if (!motorista) throw new Error("Motorista não cadastrado.");
-
-        await this.ordemRepositorio.delete({ 
-            motorista: { id: motorista.id }, 
-            listaJoia: { id: listaId } 
-        });
+        await this.ordemRepositorio.delete({ motorista: { id: motorista.id }, listaJoia: { id: listaId } });
     }
 
     async inserirEmPosicaoEspecifica(telefone: string, listaId: number, posicaoAlvo: number): Promise<void> {
@@ -144,8 +158,8 @@ export class RegistroService {
         });
 
         const listaFiltrada = listaAtual.filter(item => item.motorista.id !== motorista.id);
-
         let novoHorario: Date;
+
         if (listaFiltrada.length >= posicaoAlvo && posicaoAlvo > 0) {
             const referencia = listaFiltrada[posicaoAlvo - 1].horaDoJoinha;
             novoHorario = new Date(referencia.getTime() - 1000);
@@ -153,10 +167,7 @@ export class RegistroService {
             novoHorario = new Date();
         }
 
-        let registro = await this.ordemRepositorio.findOneBy({ 
-            motorista: { id: motorista.id }, 
-            listaJoia: { id: listaId } 
-        });
+        let registro = await this.ordemRepositorio.findOneBy({ motorista: { id: motorista.id }, listaJoia: { id: listaId } });
 
         if (registro) {
             registro.horaDoJoinha = novoHorario;
@@ -173,15 +184,13 @@ export class RegistroService {
         await this.ordemRepositorio.save(registro);
     }
 
+    // Auxiliares
     private async obterNumeroReal(whatsappId: string, client: Client): Promise<string> {
         try {
             const contato = await client.getContactById(whatsappId);
-            if (contato.number && !contato.number.includes('@')) {
-                return contato.number.replace(/\D/g, '');
-            }
-            return whatsappId.split('@')[0].split(':')[0].replace(/\D/g, '');
+            return contato.number.replace(/\D/g, '');
         } catch (error) {
-            return whatsappId.split('@')[0].split(':')[0].replace(/\D/g, '');
+            return whatsappId.split('@')[0].replace(/\D/g, '');
         }
     }
 
@@ -210,26 +219,14 @@ export class RegistroService {
 
     private async buscarMotoristaAtivoOuFalhar(telefone: string): Promise<Motorista> {
         const motorista = await MotoristaService.buscarPorTelefone(telefone);
-        if (!motorista || !motorista.ativo) {
-            throw new Error("Motorista não cadastrado ou inativo.");
-        }
+        if (!motorista || !motorista.ativo) throw new Error("Motorista não cadastrado ou inativo.");
         return motorista;
     }
 
     private async buscarListaOuFailhar(id: number): Promise<ListaJoia> {
         const lista = await this.listaRepositorio.findOneBy({ id });
-        if (!lista) throw new Error("Não há nenhuma lista aberta para este ID.");
+        if (!lista) throw new Error("Lista não encontrada.");
         return lista;
-    }
-
-    private async verificarBanimento(motoristaId: number, data: Date): Promise<void> {
-        const banido = await this.banimentoRepositorio.findOneBy({ 
-            motorista: { id: motoristaId }, 
-            dia: data 
-        });
-        if (banido) {
-            throw new Error(`JOIA BLOQUEADO! 🚫\nMotivo: ${banido.motivo}\nSua participação está bloqueada hoje.`);
-        }
     }
 
     private async verificarDuplicidadeNaLista(motoristaId: number, listaId: number): Promise<void> {

@@ -17,7 +17,8 @@ class EmpresaService {
             select: {
                 id: true,
                 nome: true,
-                cnpj: true
+                cnpj: true,
+                logo: true
             },
         });
         return empresas;
