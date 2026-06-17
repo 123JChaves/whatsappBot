@@ -82,7 +82,7 @@ export class EscalaService {
 
 static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number): Promise<any | null> {
     // 1. CÁLCULO TEMPORAL DO DIA X - 2 (Escala Mãe)
-    const dataEscalaMaeAlvo = new Date(ano, mes, dia - 2, 12, 0, 0, 0);
+    const dataEscalaMaeAlvo = new Date(ano, mes, dia -2, 12, 0, 0, 0);
     
     // Extrai o texto puro AAAA-MM-DD para neutralizar qualquer interferência de fuso horário
     const anoStr = dataEscalaMaeAlvo.getFullYear();

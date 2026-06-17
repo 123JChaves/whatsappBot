@@ -163,7 +163,7 @@ export class WhatsAppController {
 
     this.sock.ev.on('creds.update', saveCreds);
 
-    this.sock.ev.on('messages.upsert', async (m: { messages: proto.IWebMessageInfo[] }) => { 
+this.sock.ev.on('messages.upsert', async (m: { messages: proto.IWebMessageInfo[] }) => { 
         for (const msg of m.messages) {
             if (!msg || !msg.message || !msg.key) continue; 
 
@@ -181,10 +181,11 @@ export class WhatsAppController {
             // Captura o chat dinâmico atual (pode ser o grupo ou o seu chat privado)
             const chatDeOrigemId = msg.key.remoteJid || '';
 
-            // Identifica se a mensagem veio de você mesmo
+            // Identifica se a mensagem veio de você mesmo (Lendo o .lid interno prioritariamente)
             let autorRaw = msg.key.participant || msg.key.remoteJid || ''; 
             if (msg.key.fromMe && this.sock?.user?.id) {
-                autorRaw = this.sock.user.id;
+                const usuarioLogado = this.sock.user as any;
+                autorRaw = usuarioLogado.lid || usuarioLogado.id || '';
             }
 
             const partesJid = autorRaw.replace(/:[0-9]+/, '').split('@');
@@ -278,8 +279,9 @@ export class WhatsAppController {
             let foneRealMapeado = msg.key.participant || msg.message?.extendedTextMessage?.contextInfo?.participant || '';
             
             if (msg.key.fromMe && this.sock?.user?.id) {
-                // Se veio de você, o remetente real do evento no grupo é o seu próprio JID da sessão
-                foneRealMapeado = this.sock.user.id;
+                // Se veio de você, o remetente real do evento no grupo é o seu próprio JID da sessão (.lid se disponível)
+                const usuarioLogado = this.sock.user as any;
+                foneRealMapeado = usuarioLogado.lid || usuarioLogado.id || '';
             }
 
             if (foneRealMapeado && String(foneRealMapeado).includes('@s.whatsapp.net')) {

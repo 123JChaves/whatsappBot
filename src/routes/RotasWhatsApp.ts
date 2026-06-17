@@ -319,7 +319,7 @@ rotasWhatsApp.get('/whatsapp/rotas-tarde', verificarBot, async (req: Request, re
         const dataApoioIsoString = `${dataApoioOperacional.getFullYear()}-${String(dataApoioOperacional.getMonth() + 1).padStart(2, '0')}-${String(dataApoioOperacional.getDate()).padStart(2, '0')}`;
 
         // REGRA NOVA: Data para buscar a Escala Mãe do APOIO (Dia Base - 2) -> Ex: Dia 14
-        const dataEscalaApoioMae = new Date(anoDigitado, mesDigitado, diaDigitado - 2, 12, 0, 0, 0);
+        const dataEscalaApoioMae = new Date(anoDigitado, mesDigitado, diaDigitado, 12, 0, 0, 0);
         const anoApoioParam = dataEscalaApoioMae.getFullYear();
         const mesApoioParam = dataEscalaApoioMae.getMonth();
         const diaApoioParam = dataEscalaApoioMae.getDate();
