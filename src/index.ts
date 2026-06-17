@@ -67,9 +67,9 @@ async function startApp() {
         app.use(MiddlewareErro); 
 
         // 5. Inicialização do Servidor Express na Rede Local
-        const PORTA = 8080; 
+        const PORTA = 8085; 
         app.listen(PORTA, '0.0.0.0', () => { 
-            console.log(`🌐 Servidor conectado na porta ${PORTA}`); 
+            console.log(`🌐 Servidor conectado na porta ${PORTA}: http://localhost:${PORTA}`); 
         }); 
 
     } catch (error) { 

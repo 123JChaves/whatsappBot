@@ -1,19 +1,21 @@
 import { AppDataSource } from "../../data-source";
+import { IMetaConfiguracaoResult } from "../../interfaces/IMetaConfiguracaoResult";
 import { DiasTipo } from "../../models/DiasTipo";
 import { Rota } from "../../models/Rota";
 import ordenarRotasMatematicamente from "./OrdenarRotasMatematicamente";
 
-const calcularMetaConfiguracao = async (dataAlvo: Date) => {
+
+const calcularMetaConfiguracao = async (dataAlvo: Date): Promise<IMetaConfiguracaoResult> => {
     const diasTipoRepositorio = AppDataSource.getRepository(DiasTipo);
     const rotaRepositorio = AppDataSource.getRepository(Rota);
 
-    // 🔥 FIX DE BUSCA: Extrai o texto puro AAAA-MM-DD para o TypeORM não enviar "15:00:00.000Z"
+    // Extrai o texto puro AAAA-MM-DD para evitar problemas de fuso horário com o banco
     const ano = dataAlvo.getFullYear();
     const mes = String(dataAlvo.getMonth() + 1).padStart(2, '0');
     const dia = String(dataAlvo.getDate()).padStart(2, '0');
     const dataIsoStringStr = `${ano}-${mes}-${dia}`;
 
-    // Busca comparando a string limpa gerada pelo Node.js
+    // Busca o tipo de dia no calendário manual do banco de dados
     const registroManual = await diasTipoRepositorio.createQueryBuilder("dias")
         .where("DATE(dias.data) = :dataIsoStringStr", { dataIsoStringStr })
         .getOne();
@@ -26,6 +28,7 @@ const calcularMetaConfiguracao = async (dataAlvo: Date) => {
     const ehSegundaFeira = dataAlvo.getDay() === 1 && tipoDia === 'DIA_COMUM';
     const limitePlantao = ehSegundaFeira ? 5 : 4;
 
+    // Busca as listas de rotas cadastradas no sistema
     const [rotasTardeBrutas, rotasMadrugadaBrutas] = await Promise.all([
         rotaRepositorio.find({ where: { tipo_rota: 'ROTA_TARDE' } }),
         rotaRepositorio.find({ where: { tipo_rota: 'ROTA_MADRUGADA' } })
@@ -37,15 +40,19 @@ const calcularMetaConfiguracao = async (dataAlvo: Date) => {
     const totalTarde = rotasTarde.length;
     const totalMadrugada = rotasMadrugada.length;
 
-    let posicaoDoApoio = totalTarde; 
-    if (totalMadrugada >= totalTarde) {
-        posicaoDoApoio = totalMadrugada + 1;
+    // 🚀 A SUA REGRA MATEMÁTICA EXATA PARA A DEFINIÇÃO DO APOIO NA ESCALA:
+    let posicaoDoApoio = 0;
+    if (totalTarde > totalMadrugada) {
+        posicaoDoApoio = totalTarde; // Coincide com a última rota da tarde
+    } else {
+        // Trata os cenários: (totalTarde < totalMadrugada) e (totalTarde === totalMadrugada)
+        posicaoDoApoio = totalMadrugada + 1; 
     }
 
     const qtdMaxRotasValidas = Math.max(totalTarde, totalMadrugada);
 
     return {
-        tipoDia: tipoDia, 
+        tipoDia, 
         ehSegundaFeira,
         limitePlantao,
         rotasTarde,

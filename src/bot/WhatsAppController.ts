@@ -192,10 +192,11 @@ export class WhatsAppController {
             if (!autorLid) continue;
 
             // =========================================================================
-            // INTERCEPTADORES GLOBAIS DE EXTRAÇÃO (IGNORAM IDs_PERMITIDOS)
+            // INTERCEPTADORES GLOBAIS DE EXTRAÇÃO (RODAM NO CHAT ATUAL / GRUPO)
             // =========================================================================
             if (textoLimpo.startsWith('@extrair_lid_usuario')) {
-                const ehAdmin = await this.registroService.verificarSeEhAdmin(autorLid, this.sock!);
+                // Como roda no seu chip, msg.key.fromMe garante que você é o ADM supremo
+                const ehAdmin = msg.key.fromMe || await this.registroService.verificarSeEhAdmin(autorLid, this.sock!);
                 if (!ehAdmin) continue; 
 
                 let idDesejadoPuro = '';
@@ -245,7 +246,7 @@ export class WhatsAppController {
             }
 
             if (textoLimpo === '@extrair_lid') {
-                const ehAdmin = await this.registroService.verificarSeEhAdmin(autorLid, this.sock!);
+                const ehAdmin = msg.key.fromMe || await this.registroService.verificarSeEhAdmin(autorLid, this.sock!);
                 if (!ehAdmin) continue; 
 
                 console.log('\n==================================================');
@@ -259,15 +260,25 @@ export class WhatsAppController {
                 continue; 
             }
 
-            // =========================================================================
-            // REGRAS DE NEGÓCIO DIÁRIAS (PERMITE PASSAR SE FOR OS IDs_PERMITIDOS OU SE FOR SEU PRÓPRIO CHAT)
-            // =========================================================================
-            if (!this.IDs_PERMITIDOS.includes(chatDeOrigemId) && !msg.key.fromMe) continue; 
+            // EXECUÇÃO DO MÉTODO DE COMANDOS ADMIN
+            if (textoLimpo.startsWith('@')) { 
+                // Se a mensagem for sua (fromMe), força a execução pulando travas internas de admin
+                const processado = await this.processarComandosAdmin(msg, textoLimpo, autorLid); 
+                if (processado) continue; 
+            } 
 
-            // Captura e vinculação do número de telefone em tempo real
+            // =========================================================================
+            // REGRAS DE NEGÓCIO DIÁRIAS (FILTRA APENAS OS GRUPOS PERMITIDOS DA ESCALA)
+            // =========================================================================
+            if (!this.IDs_PERMITIDOS.includes(chatDeOrigemId)) {
+                continue; 
+            }
+
+            // Mapeamento de telefone adaptado para capturar você mesmo dentro do grupo
             let foneRealMapeado = msg.key.participant || msg.message?.extendedTextMessage?.contextInfo?.participant || '';
             
             if (msg.key.fromMe && this.sock?.user?.id) {
+                // Se veio de você, o remetente real do evento no grupo é o seu próprio JID da sessão
                 foneRealMapeado = this.sock.user.id;
             }
 
@@ -283,21 +294,13 @@ export class WhatsAppController {
                 // Cadastro Híbrido de Motoristas
                 if (textoLimpo.startsWith('@cadastrar ')) { 
                     if (!this.cadastroAberto) { 
-                        // CORREÇÃO: Responde no chat atual (chatDeOrigemId) e não no grupo fixo
                         await this.enviarMensagemElegante(chatDeOrigemId, "CADASTRO", "🔒 O cadastro está fechado."); 
                         continue; 
                     } 
                     const nome = textoLimpo.replace('@cadastrar ', '').trim(); 
                     await this.registroService.cadastrarMotorista(nome, autorLid, this.sock!); 
-                    // CORREÇÃO: Responde no chat atual (chatDeOrigemId)
                     await this.enviarMensagemElegante(chatDeOrigemId, "CADASTRO", `✅ *${nome}*, cadastrado com sucesso!`); 
                     continue; 
-                } 
-
-                // EXECUÇÃO DO MÉTODO DE COMANDOS ADMIN
-                if (textoLimpo.startsWith('@')) { 
-                    const processado = await this.processarComandosAdmin(msg, textoLimpo, autorLid); 
-                    if (processado) continue; 
                 } 
 
                 // Tratamento da Janela de Bloqueio / Largada Queimada
@@ -325,11 +328,11 @@ export class WhatsAppController {
                             }) as Record<string, unknown> | null;
 
                             if (banidoHoje) {
-                                // CORREÇÃO: Responde no chat atual (chatDeOrigemId)
                                 await this.enviarMensagemElegante(chatDeOrigemId, "AVISO", `⚠️ @${autorLid}, você está impedido de bater o joinha hoje.`);
                                 continue;
                             }
 
+                            // Registra o seu joinha na tabela de escala normalmente, mesmo vindo do seu chip
                             await this.registroService.adicionarJoinha(autorLid, lista.id, this.sock!, timestampOficialMs);
                         }
                     }
@@ -340,7 +343,6 @@ export class WhatsAppController {
         }
     });
   }
-
 
 // Propriedade da classe para armazenar as tarefas ativas
   private tarefasAtivas: ScheduledTask[] = [];
@@ -818,7 +820,7 @@ private async processarComandosAdmin(msg: proto.IWebMessageInfo, comando: string
 
   private async enviarMensagemElegante(to: string | undefined, titulo: string, conteudo: string): Promise<void> { 
     if (!to || !this.sock) return;
-    await this.sock.sendMessage(to, { text: `*${titulo}*\n\n${conteudo}` }); 
+    await this.sock.sendMessage(to, { text: `${titulo}\n\n${conteudo}` }); 
   }  
 
   public setCadastroStatus(status: boolean): void { this.cadastroAberto = status; } 
