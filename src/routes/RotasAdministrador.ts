@@ -1,30 +1,41 @@
 import { Router } from "express";
 import AdministradorController from "../controllers/AdministradorController";
+import AdminAutenticacaoMiddleware from "../middlewares/AdminAutenticacao";
 
 const rotasAdministrador = Router();
 
-// Rota para listar todos os administradores:
-rotasAdministrador.get('/administradores', 
+// Rota pública de autenticação:
+rotasAdministrador.post('/administrador/login', 
+    AdministradorController.logarAdministrador
+);
+
+// Rota para listar todos os administradores
+rotasAdministrador.get('/administradores',
+    AdminAutenticacaoMiddleware, 
     (AdministradorController.listarAdministradores)
 );
 
-// Rota para mostrar um administrador (por ID):
+// Rota para exibir um administrador (por ID)
 rotasAdministrador.get('/administrador/:id', 
+    AdminAutenticacaoMiddleware, 
     (AdministradorController.mostrarUmAdministrador)
 );
 
-// Rota para cadastrar administrador:
+// Rota para cadastrar administrador
 rotasAdministrador.post('/administrador', 
+    AdminAutenticacaoMiddleware, 
     (AdministradorController.cadastrarAdministrador)
 );
 
-// Rota para editar um administrador:
+// Rota para editar um administrador
 rotasAdministrador.put('/administrador/:id', 
+    AdminAutenticacaoMiddleware, 
     (AdministradorController.editarAdministrador)
 );
 
-// Rota para excluir um administrador:
+// Rota para deletar um administrador
 rotasAdministrador.delete('/administrador/:id', 
+    AdminAutenticacaoMiddleware, 
     (AdministradorController.deletarAdministrador)
 );
 

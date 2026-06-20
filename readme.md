@@ -78,7 +78,7 @@ Transpile e Rode: `npm run build && npm run migration:run`
 `npm install ts-node-dev typescript ts-node --save-dev`
 Para rodar: `npm run dev`
 
-## A API é executada neste endereço: **<http://localhost:8080>**
+## A API é executada neste endereço: **<http://localhost:8085s>**
 
 **Importar o [bcrypt], uma biblioteca para criptografar senha:**
 

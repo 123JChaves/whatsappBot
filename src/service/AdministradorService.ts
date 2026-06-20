@@ -7,6 +7,8 @@ import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigator
 import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 import CpfValido from "../utils/validators/ValidacaoDeCpf";
 import TextoHelper from "../utils/helpers/TextoHelper";
+import * as bcrypt from 'bcrypt';
+import * as jwt from 'jsonwebtoken';
 
 class AdministradorService {
     private static administradorRepositorio = AppDataSource.getRepository(Administrador);
@@ -92,6 +94,64 @@ class AdministradorService {
             await this.administradorRepositorio.save(administrador);
             console.log(`[SISTEMA CONTRA FALHAS] 🏅 LID ${jidLimpo} vinculado ao administrador: ${administrador.nome}`);
         }
+    }
+
+    // Retorna o token JWT e os dados públicos do administrador autenticado
+    static async logarAdministrador(dados: Partial<IAdministrador>): Promise<{ 
+        token: string; 
+        administrador: Omit<IAdministrador, 'senha'> & { dataDeRegistro: Date; dataDeEdicao: Date } 
+    }> {
+        validarCamposObrigatorios<Partial<IAdministrador>>(dados, ['email', 'senha']);
+
+        // Força o TypeORM a buscar o campo 'senha' que está configurado como 'select: false'
+        const administrador = await this.administradorRepositorio.createQueryBuilder("administrador")
+            .where("administrador.email = :email", { email: dados.email })
+            .addSelect("administrador.senha") // Traz a senha explicitamente para a validação
+            .getOne();
+
+        if (!administrador) {
+            throw new RequisicaoInvalidaErro('Email ou senha inválidos!');
+        }
+
+        // 2. Compara a senha enviada com o hash recuperado do banco
+        const senhaValida = await bcrypt.compare(dados.senha!, administrador.senha);
+
+        if (!senhaValida) {
+            throw new RequisicaoInvalidaErro('Email ou senha inválidos!');
+        }
+
+        const secretKey = process.env.JWT_ADMIN_SECRET;
+
+        if (!secretKey) {
+            console.error('ERRO CRÍTICO: JWT_ADMIN_SECRET não configurado no .env');
+            throw new Error('Erro interno no servidor de autenticação.');
+        }
+
+        // 3. Gera o token assinado
+        const token = jwt.sign(
+            {
+                id: administrador.id,
+                email: administrador.email,
+                role: 'administrador'
+            }, 
+            secretKey, 
+            { expiresIn: '8h' }
+        );
+
+        // 4. Montamos o objeto de retorno mapeando estritamente os campos existentes
+        return { 
+            token, 
+            administrador: {
+                id: administrador.id,
+                nome: administrador.nome,
+                cpf: administrador.cpf,
+                telefoneWhatsApp: administrador.telefoneWhatsApp,
+                whatsappLid: administrador.whatsappLid,
+                email: administrador.email,
+                dataDeRegistro: administrador.dataDeRegistro,
+                dataDeEdicao: administrador.dataDeEdicao
+            }
+        };
     }
 
     // Service para cadastrar um administrador:

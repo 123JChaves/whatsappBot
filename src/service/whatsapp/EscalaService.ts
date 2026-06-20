@@ -148,7 +148,7 @@ static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number)
     if (tipoApoioComum && tipoApoioComum.motorista) return tipoApoioComum.motorista;
 
     return null;
-}
+  }
  
 
   private async identificarTipoDia(data: Date): Promise<TipoDia> { 
@@ -372,7 +372,7 @@ static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number)
 
         if (contadorPlantao <= limitePlantao) {
           if (contadorPlantao === 1) {
-            blocoPlantao.push(`*Plantão até o fim das rotas*\n ${motorista.nome}`);
+            blocoPlantao.push(`*Plantão até o fim das rotas*\n1 ${motorista.nome}`);
           } else {
             blocoPlantao.push(`${contadorPlantao} ${motorista.nome}`);
           }
@@ -625,7 +625,7 @@ async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; menc
     });
 
     return { texto: texto.trim(), mencoes };
-}
+  }
 
   /**
    * Constrói o texto formatado das escalas da Madrugada e Apoio (Dia X + 2) com ícones dinâmicos via banco de dados

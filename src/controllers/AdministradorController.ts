@@ -3,6 +3,14 @@ import AdministradorService from "../service/AdministradorService";
 
 class AdministradorController {
 
+    static async logarAdministrador(req: Request, res: Response) {
+        const resultado = await AdministradorService.logarAdministrador(req.body);
+        return res.status(200).json({
+            message: 'Login realizado com sucesso!',
+            ...resultado
+        });
+    };
+
     static async listarAdministradores(req: Request, res: Response) {
         const administradores = await AdministradorService.listarAdministradores();
         return res.status(200).json(administradores);
