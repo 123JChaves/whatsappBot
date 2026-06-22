@@ -438,7 +438,7 @@ private async processarComandosAdmin(msg: proto.IWebMessageInfo, comando: string
       await this.enviarMensagemElegante(
         chatDeOrigemId, 
         "CADASTRO LIBERADO", 
-        "🔓 *CADASTRO LIBERADO!*\n\n Digite:\n*@cadastrar Seu Nome Here*"
+        "🔓 *CADASTRO LIBERADO!*\n\n Digite:\n*@cadastrar Seu Nome Aqui*"
       ); 
       return true; 
     } 
