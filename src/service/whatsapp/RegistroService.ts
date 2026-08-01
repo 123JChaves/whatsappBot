@@ -6,7 +6,10 @@ import { Banimento } from "../../models/Banimento";
 import { IdentificadorLista } from "../../interfaces/ITipos"; 
 import MotoristaService from "../MotoristaService"; 
 import { jidNormalizedUser, WASocket } from "@whiskeysockets/baileys";
-import { Between } from "typeorm";
+import { Between, IsNull } from "typeorm";
+import { Passageiro } from "../../models/Passageiro";
+import { EscalaService } from "./EscalaService";
+import { SolicitacaoCorrida } from "../../models/SolicitaçãoCorrida";
 
 export class RegistroService { 
   private readonly ordemRepositorio = AppDataSource.getRepository(OrdemJoinha); 
@@ -106,12 +109,16 @@ export class RegistroService {
   async registrarBanimentoAntecipado(whatsappId: string, client: WASocket): Promise<void> { 
     const lidLimpo = whatsappId.replace(/:[0-9]+/, '');
     const hoje = this.obterDataHoje(); 
+    
+    // 1. Busca o motorista no banco para capturar o Nome Real
     const motorista = await MotoristaService.buscarPorLid(lidLimpo); 
     if (!motorista) return; 
 
-    const jaBanido = await this.banimentoRepositorio.findOneBy({ 
-      motorista: { id: motorista.id }, 
-      dia: hoje 
+    const jaBanido = await this.banimentoRepositorio.findOne({
+      where: {
+        motorista: { id: motorista.id },
+        dia: hoje
+      }
     }); 
 
     if (!jaBanido) {
@@ -121,8 +128,17 @@ export class RegistroService {
         motivo: "Mensagem enviada na janela de banimento (Queimou a largada)" 
       }); 
       await this.banimentoRepositorio.save(novoBan); 
+
+      // 💡 CORREÇÃO: Dispara o aviso no grupo mostrando o NOME REAL do motorista
+      // Substitua 'this.grupoId' pelo ID do seu grupo de escala se o escopo permitir, 
+      // ou envie de volta para o chat de origem se capturado no fluxo.
+      const msgAviso = `⚠️ O motorista *${motorista.nome}* enviou mensagem na janela de banimento e foi penalizado!`;
+      
+      // Se você quiser notificar o grupo oficial:
+      await client.sendMessage(whatsappId, { text: msgAviso });
     } 
-  } 
+  }
+ 
 
   /** 
    * Busca ou cria a lista para a data atual 
@@ -145,20 +161,28 @@ export class RegistroService {
   /** 
    * Adiciona um motorista manualmente na lista via LID
    */ 
-  public async adicionarMotoristaManualmente(whatsappId: string, listaId: number, client: WASocket): Promise<OrdemJoinha> { 
+  /**
+   * Adiciona um motorista manualmente na cauda da lista baseado em uma DATA ESPECÍFICA da escala
+   */ 
+  public async adicionarMotoristaManualmente(whatsappId: string, dataLista: Date, client: WASocket): Promise<OrdemJoinha> { 
       const lidLimpo = whatsappId.replace(/:[0-9]+/, '').split('@')[0];
       const motorista = await MotoristaService.buscarPorLid(lidLimpo); 
       if (!motorista || !motorista.ativo) throw new Error("Motorista não encontrado ou inativo."); 
       
-      const listaAtiva = await this.buscarListaOuFalhar(listaId); 
+      // Busca a lista exata usando o intervalo do fuso horário
+      const inicioDia = new Date(dataLista); inicioDia.setHours(0, 0, 0, 0);
+      const fimDia = new Date(dataLista); fimDia.setHours(23, 59, 59, 999);
+      const listaAtiva = await this.listaRepositorio.findOne({ where: { dia: Between(inicioDia, fimDia) } });
+
+      if (!listaAtiva) throw new Error("Lista não encontrada para a data informada.");
 
       let registro = await this.ordemRepositorio.findOne({
-        where: { motoristaId: motorista.id, listaJoiaId: listaId }
+        where: { motoristaId: motorista.id, listaJoiaId: listaAtiva.id }
       });
 
       if (!registro) {
         const ultimaOrdem = await this.ordemRepositorio.findOne({
-          where: { listaJoiaId: listaId },
+          where: { listaJoiaId: listaAtiva.id },
           order: { posicaoEfetiva: 'DESC' }
         });
         
@@ -166,8 +190,8 @@ export class RegistroService {
 
         registro = this.ordemRepositorio.create({
           motoristaId: motorista.id,
-          listaJoiaId: listaId,
-          posicao: proximaPosicao, // Sincroniza a coluna antiga
+          listaJoiaId: listaAtiva.id,
+          posicao: proximaPosicao,
           posicaoEfetiva: proximaPosicao,
           isPenalizado: false,
           horaDoJoinha: new Date()
@@ -179,8 +203,10 @@ export class RegistroService {
 
       const salvo = await this.ordemRepositorio.save(registro);
 
-      // 🔥 GATILHO: Dispara o recálculo automático das rotas para esta lista
-      await this.sincronizarAtribuicoesFinais(listaId, listaAtiva.dia);
+      // Recalcula sem disparar mensagens automáticas
+      const { EscalaService } = require("./EscalaService");
+      const escalaServiceNativo = new EscalaService();
+      await escalaServiceNativo.gerarEscalaCompleta(listaAtiva.id);
 
       return salvo;
   }
@@ -394,6 +420,176 @@ export class RegistroService {
     });
 
     return !!adminPorTelefone;
+  }
+
+  /** Gerencia a viagem do passageiro localizando-o de forma 100% segura via LID da rede
+   * Sincronizado com o motor especialista para blindagem das regras complexas do Apoio.
+  */
+  public async gerenciarSolicitacaoPorLid(
+    autorLid: string, 
+    diaDigitado: number, 
+    turnoString: string,
+    operacao: "CONFIRMAR" | "CANCELAR"
+  ): Promise<{ motoristaLid: string | null; textoRota: string; dataFormatada: string; nomePassageiro: string }> {
+    
+    const passageiroRepo = AppDataSource.getRepository(Passageiro);
+    
+    // 🚀 ALINHAMENTO COM A ENTIDADE: Instancia o repositório utilizando a classe SolicitacaoCorrida diretamente
+    const solicitacoesRepo = AppDataSource.getRepository(SolicitacaoCorrida);
+
+    // Remove portas de dispositivos (:1, :2) do LID para evitar quebras de igualdade exata
+    const lidLimpoParaBusca = autorLid.replace(/:[0-9]+/, '').split('@')[0].trim();
+    const fonePuroFallback = autorLid.replace(/\D/g, '');
+    
+    // 1. Busca o passageiro ativo checando prioritariamente o LID, com Fallback para o número puro
+    const passageiro = await passageiroRepo.createQueryBuilder("p")
+      .leftJoinAndSelect("p.rota", "rota")
+      .leftJoinAndSelect("p.endereco", "endereco")
+      .where("p.whatsAppLid = :lidLimpoParaBusca AND p.ativo = true", { lidLimpoParaBusca })
+      .orWhere("p.telefoneWhatsApp = :fonePuroFallback AND p.ativo = true", { fonePuroFallback })
+      .getOne();
+
+    if (!passageiro || !passageiro.rota) {
+      throw new Error("Seu perfil não foi localizado ou não possui uma rota ativa vinculada. Peça para o administrador cadastrar seu número.");
+    }
+
+    // 2. Se o passageiro veio pelo fallback do telefone, grava o LID de forma atômica protegida
+    if (!passageiro.whatsAppLid) {
+      try {
+        await passageiroRepo.createQueryBuilder()
+          .update(Passageiro)
+          .set({ whatsAppLid: lidLimpoParaBusca })
+          .where("id = :id AND whatsAppLid IS NULL", { id: passageiro.id })
+          .execute();
+        console.log(`[LID PASSAGEIRO AUTOMÁTICO] Vinculado LID ${lidLimpoParaBusca} ao passageiro ${passageiro.nome}`);
+      } catch (errLid) {
+        console.warn("[LID PASSAGEIRO] Ignorado update automático por concorrência ou duplicidade.");
+      }
+    }
+
+    // 3. Resolve dinamicamente o calendário tratando a virada de mês de forma segura
+    const hoje = new Date();
+    let anoAlvo = hoje.getFullYear();
+    let mesAlvo = hoje.getMonth();
+    if (diaDigitado > hoje.getDate()) {
+      mesAlvo -= 1;
+      if (mesAlvo < 0) { 
+        mesAlvo = 11; 
+        anoAlvo -= 1; 
+      }
+    }
+    const dataAlvoObj = new Date(anoAlvo, mesAlvo, diaDigitado, 12, 0, 0, 0);
+    const dataViagemIso = `${dataAlvoObj.getFullYear()}-${String(dataAlvoObj.getMonth() + 1).padStart(2, '0')}-${String(dataAlvoObj.getDate()).padStart(2, '0')}`;
+    const dataFormatadaBr = `${String(dataAlvoObj.getDate()).padStart(2, '0')}/${String(dataAlvoObj.getMonth() + 1).padStart(2, '0')}`;
+
+    const tipoTurno: "IDA" | "VOLTA" = turnoString.includes("volt") ? "VOLTA" : "IDA";
+
+    // 4. PERSISTÊNCIA ATÔMICA: Modificado para ler a classe SolicitacaoCorrida de forma tipada
+    if (operacao === "CANCELAR") {
+      await solicitacoesRepo.createQueryBuilder()
+        .delete()
+        .from(SolicitacaoCorrida) // 🚀 CORREÇÃO: Passa a classe da Entidade em vez de String crua
+        .where("passageiroId = :passageiroId AND dataViagem = :dataViagem AND tipoTurno = :tipoTurno", {
+          passageiroId: passageiro.id,
+          dataViagem: dataViagemIso,
+          tipoTurno
+        })
+        .execute();
+    } else {
+      await solicitacoesRepo.createQueryBuilder()
+        .insert()
+        .into(SolicitacaoCorrida) // 🚀 CORREÇÃO: Passa a classe da Entidade em vez de String crua
+        .values({ 
+          passageiroId: passageiro.id, 
+          dataViagem: dataViagemIso, 
+          tipoTurno: tipoTurno 
+        })
+        .orIgnore() // Anula erros caso o gatilho sofra dupla inserção concorrente no UNIQUE KEY
+        .execute();
+    }
+
+    // 5. Cruzamento de motoristas tratando fuso horário de forma segura via BETWEEN
+    const diasSubtracao = passageiro.rota.tipo_rota === 'ROTA_MADRUGADA' ? 2 : 1;
+    const dataListaOrigem = new Date(dataAlvoObj);
+    dataListaOrigem.setDate(dataListaOrigem.getDate() - diasSubtracao);
+
+    const inicioDiaOrigem = new Date(dataListaOrigem);
+    inicioDiaOrigem.setHours(0, 0, 0, 0);
+    
+    const fimDiaOrigem = new Date(dataListaOrigem);
+    fimDiaOrigem.setHours(23, 59, 59, 999);
+
+    const listaOrigem = await AppDataSource.getRepository("ListaJoia").createQueryBuilder("lista")
+      .where("lista.dia BETWEEN :inicioDiaOrigem AND :fimDiaOrigem", { inicioDiaOrigem, fimDiaOrigem })
+      .getOne();
+
+    let motoristaLidTarget = null;
+    let textoResultadoRota = "";
+
+    if (listaOrigem) {
+      const escalaService = new EscalaService();
+
+      const motoristaEfetivo = await escalaService.encontrarMotoristaResponsavel(
+        passageiro.rota.id, 
+        listaOrigem.id, 
+        dataAlvoObj
+      );
+
+      if (motoristaEfetivo && motoristaEfetivo.whatsAppLid) {
+        motoristaLidTarget = motoristaEfetivo.whatsAppLid;
+        
+        const resultadoTextoGeral = passageiro.rota.tipo_rota === 'ROTA_MADRUGADA'
+          ? await escalaService.obterTextoPeriodoMadrugada(dataListaOrigem.getDate())
+          : await escalaService.obterTextoPeriodoTarde(dataListaOrigem.getDate());
+
+        const identificadorRota = (passageiro.rota.ordem || '').trim();
+        const linhas = resultadoTextoGeral.texto.split('\n\n');
+        const blocoDaRota = linhas.find((b: string) => b.includes(` - ${identificadorRota} - `)) || resultadoTextoGeral.texto;
+
+        const acaoTexto = operacao === "CONFIRMAR" ? "CONFIRMOU presença" : "CANCELOU a presença";
+        textoResultadoRota = `🔔 *ALERTA OPERACIONAL*\n\nO passageiro *${passageiro.nome}* ${acaoTexto} para a viagem de *${tipoTurno}* no dia *${dataFormatadaBr}*.\n\n📋 *Espelho Atualizado da sua Rota:*\n${blocoDaRota}`;
+      }
+    }
+
+    return {
+      motoristaLid: motoristaLidTarget,
+      dataFormatada: dataFormatadaBr,
+      textoRota: textoResultadoRota,
+      nomePassageiro: passageiro.nome
+    };
+  }
+
+  /**
+  * CAPTURA AUTOMÁTICA EM GRUPOS (COM CONTATOS NA AGENDA):
+  * Cruza o telefone detectado na mensagem do grupo com o cadastro e salva o LID numérico puro.
+  -*/
+  public async atualizarLidPassageiroPorTelefone(telefonePuroAgenda: string, lidRealOculto: string): Promise<boolean> {
+    const passageiroRepo = AppDataSource.getRepository(Passageiro);
+    
+    // Pega os últimos 8 dígitos do telefone para ignorar se o WhatsApp removeu ou manteve o nono dígito '9'
+    const caudaWhatsApp = telefonePuroAgenda.slice(-8);
+    if (!caudaWhatsApp || caudaWhatsApp.length < 8) return false;
+
+    // Busca o passageiro ativo no banco de dados local do Windows
+    const passageiro = await passageiroRepo.createQueryBuilder("p")
+      .where("p.telefoneWhatsApp LIKE :cauda", { cauda: `%${caudaWhatsApp}` })
+      .andWhere("p.ativo = true")
+      .getOne();
+    
+    // Se localizou o passageiro na sua base e a coluna whatsAppLid estiver vazia (null), grava o número puro do LID
+    if (passageiro && !passageiro.whatsAppLid) {
+      passageiro.whatsAppLid = lidRealOculto.trim(); // Grava estritamente o número puro (ex: 73040348102809)
+      await passageiroRepo.save(passageiro);
+      
+      console.log(`\n==================================================`);
+      console.log(`✅ [LID CAPTURADO COM SUCESSO DENTRO DO GRUPO]`);
+      console.log(`👤 PASSAGEIRO LOCALIZADO: ${passageiro.nome}`);
+      console.log(`📞 TELEFONE DA AGENDA: ${passageiro.telefoneWhatsApp}`);
+      console.log(`🆔 LID NUMÉRICO GRAVADO NO BANCO: ${lidRealOculto}`);
+      console.log(`==================================================\n`);
+      return true;
+    }
+    return false;
   }
 
   /**

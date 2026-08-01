@@ -1,4 +1,4 @@
- import { AppDataSource } from "../../data-source"; 
+import { AppDataSource } from "../../data-source"; 
 import { OrdemJoinha } from "../../models/OrdemJoinha"; 
 import { Rota } from "../../models/Rota"; 
 import { RotaAtribuida } from "../../models/RotaAtribuida"; 
@@ -80,7 +80,7 @@ export class EscalaService {
   ); 
 }
 
-static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number): Promise<any | null> {
+  static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number): Promise<any | null> {
     // 1. CÁLCULO TEMPORAL DO DIA X - 2 (Escala Mãe)
     const dataEscalaMaeAlvo = new Date(ano, mes, dia -2, 12, 0, 0, 0);
     
@@ -149,7 +149,6 @@ static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number)
 
     return null;
   }
- 
 
   private async identificarTipoDia(data: Date): Promise<TipoDia> { 
     const dataIso = formatarDataIsoPura(data);
@@ -448,34 +447,6 @@ static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number)
     return texto; 
   }
 
-  private formatarLinhaPorRegra(reg: IRegistroRelatorio, tipo: TipoDia, limite: number, qtdMax: number, posicaoAtual: number): string { 
-    const { motorista: { nome } } = reg; 
-    
-    if (tipo === 'DIA_COMUM') { 
-      if (posicaoAtual <= limite) {
-        return (posicaoAtual === 1 ? `*Plantão*\n` : "") + `${posicaoAtual} ${nome}\n`; 
-      }
-      if (posicaoAtual > limite && posicaoAtual <= qtdMax) {
-        return (posicaoAtual === limite + 1 ? `\n*Rota*\n` : "") + `${posicaoAtual} ${nome}\n`; 
-      }
-      if (posicaoAtual === qtdMax + 1) {
-        return `\n${nome} (Apoio/Plantão)\n`; 
-      }
-      return (posicaoAtual === qtdMax + 2 ? `\n*Backup*\n` : "") + `${nome}\n`; 
-    } 
-
-    if (tipo === 'DIA_LIVRE') { 
-      // 🔒 MANTIDO ÍNTEGRO: Sua regra complexa de plantões fracionados em fins de semana/feriado casada com a maior fila
-      if (posicaoAtual === 1) return `*Plantão (até o fim das rotas)*\n1 ${nome}\n`; 
-      if (posicaoAtual <= 5) return `${posicaoAtual} ${nome}\n`; 
-      if (posicaoAtual === 6) return `\n*Plantão (das 04h00 às 06h00)*\n6 ${nome}\n`; 
-      if (posicaoAtual <= qtdMax) return `${posicaoAtual} ${nome}\n`; 
-      return (posicaoAtual === qtdMax + 1 ? `\n*Livre*\n` : "") + `${posicaoAtual} ${nome}\n`; 
-    } 
-    
-    return `${posicaoAtual} ${nome}\n`; 
-  } 
-
   public async obterMotoristasOrdenados(listaId: number): Promise<OrdemJoinha[]> { 
     return await this.ordemRepositorio.find({ 
       where: { listaJoia: { id: listaId } }, 
@@ -488,71 +459,93 @@ static async obterMotoristaApoioEscalaMae(ano: number, mes: number, dia: number)
     }); 
   }
 
-  /**
-   * Constrói o texto formatado das escalas da Tarde (Dia X + 1) com ícones dinâmicos via banco de dados
-   * GARANTIA: Lista absolutamente todas as rotas da tarde, inclusive as vagas/sem motorista.
-   */
+/**
+ * Constrói o texto formatado das escalas da Tarde (Dia X + 1) com ícones dinâmicos via banco de dados
+ * GARANTIA: Lista absolutamente todas as rotas da tarde, inclusive as vagas/sem motorista.
+ * CRUZA COM: Tabela solicitacao_corrida para exibir checks verdes dinâmicos.
+ */
 async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; mencoes: string[] }> {
     const dataAtual = new Date();
-    const anoDigitado = dataAtual.getFullYear();
-    const mesDigitado = dataAtual.getMonth(); // 0-indexed
-    const diaDigitado = diaDoJoinha;
+    let anoDigitado = dataAtual.getFullYear();
+    let mesDigitado = dataAtual.getMonth(); // 0-indexed
 
-    // 1. Criação das datas limites da lista de origem (Dia X)
-    const inicioDiaJoia = new Date(anoDigitado, mesDigitado, diaDigitado, 0, 0, 0, 0);
-    const fimDiaJoia = new Date(anoDigitado, mesDigitado, diaDigitado, 23, 59, 59, 999);
+    // 🚀 CORREÇÃO DE TRANSIÇÃO: Se o dia solicitado for maior que o dia atual, pertence ao mês anterior
+    if (diaDoJoinha > dataAtual.getDate()) {
+        const dataMesAnterior = new Date(anoDigitado, mesDigitado - 1, 1);
+        anoDigitado = dataMesAnterior.getFullYear();
+        mesDigitado = dataMesAnterior.getMonth();
+    }
+
+    // Criação das datas limites da lista de origem (Dia X)
+    const inicioDiaJoia = new Date(anoDigitado, mesDigitado, diaDoJoinha, 0, 0, 0, 0);
+    const fimDiaJoia = new Date(anoDigitado, mesDigitado, diaDoJoinha, 23, 59, 59, 999);
 
     // Busca a lista de origem usando o intervalo BETWEEN
     const listaJoia = await this.listaRepositorio.createQueryBuilder("lista")
       .where("lista.dia BETWEEN :inicioDiaJoia AND :fimDiaJoia", { inicioDiaJoia, fimDiaJoia })
       .getOne();
 
-    if (!listaJoia) throw new Error(`Nenhuma lista encontrada para o dia ${diaDoJoinha}.`);
+    if (!listaJoia) throw new Error(`Nenhuma lista encontrada para o dia ${diaDoJoinha}/${mesDigitado + 1}.`);
 
-    // Janela Comum (+1 Dia em relação ao início) - Data real da operação (Ex: Dia 16)
-    const dataTardeOperacional = new Date(anoDigitado, mesDigitado, diaDigitado + 1, 12, 0, 0, 0);
+    // 🚀 CORREÇÃO DA DATA OPERACIONAL (X + 1): Usa a data do banco para o JavaScript virar o mês/ano sem erros
+    const dataTardeOperacional = new Date(listaJoia.dia);
+    dataTardeOperacional.setDate(dataTardeOperacional.getDate() + 1);
+    dataTardeOperacional.setHours(12, 0, 0, 0);
+
     const dataTardeIsoString = `${dataTardeOperacional.getFullYear()}-${String(dataTardeOperacional.getMonth() + 1).padStart(2, '0')}-${String(dataTardeOperacional.getDate()).padStart(2, '0')}`;
     const dataFormatada = `${String(dataTardeOperacional.getDate()).padStart(2, '0')}/${String(dataTardeOperacional.getMonth() + 1).padStart(2, '0')}/${dataTardeOperacional.getFullYear()}`;
     const diaSemanaTexto = this.obterNomeDiaSemana(dataTardeOperacional);
 
-    // Lógica de verificação do tipo de dia (Registro Manual ou Fim de Semana)
-    const registroManual = await AppDataSource.getRepository(DiasTipo).createQueryBuilder("diasTipo")
-        .where("DATE(diasTipo.data) = :dataTardeIsoString", { dataTardeIsoString })
+    // Lógica de verificação do tipo de dia (Registro Manual ou Fim de Semana) usando BETWEEN seguro
+    const inicioDiaTarde = new Date(dataTardeOperacional); inicioDiaTarde.setHours(0,0,0,0);
+    const fimDiaTarde = new Date(dataTardeOperacional); fimDiaTarde.setHours(23,59,59,999);
+
+    const registroManual = await AppDataSource.getRepository(this.diasTipoRepositorio.target).createQueryBuilder("diasTipo")
+        .where("diasTipo.data BETWEEN :inicioDiaTarde AND :fimDiaTarde", { inicioDiaTarde, fimDiaTarde })
         .getOne();
 
     let tipoDiaAlvo: 'DIA_COMUM' | 'DIA_LIVRE' = 'DIA_COMUM';
     if (registroManual) {
-        tipoDiaAlvo = registroManual.tipo;
+        tipoDiaAlvo = (registroManual as any).tipo;
     } else {
         const diaSemana = dataTardeOperacional.getDay();
         if (diaSemana === 0 || diaSemana === 6) tipoDiaAlvo = 'DIA_LIVRE';
     }
 
     // Busca todas as rotas da tarde cadastradas
-    const todasAsRotasTarde = await this.rotaRepositorio.createQueryBuilder("rota")
-      .leftJoinAndSelect("rota.passageiros", "passageiro")
-      .leftJoinAndSelect("passageiro.endereco", "endereco")
-      .leftJoinAndSelect("rota.empresas", "empresas")
-      .where("rota.tipo_rota = 'ROTA_TARDE'")
-      .orderBy("CAST(REGEXP_REPLACE(rota.ordem, '[^0-9]', '') AS UNSIGNED)", "ASC")
-      .getMany();
+    const todasAsRotasTarde = await this.rotaRepositorio.find({
+      where: { tipo_rota: 'ROTA_TARDE' },
+      relations: [
+        "passageiros", 
+        "passageiros.endereco", 
+        "passageiros.endereco.bairro", 
+        "empresas"
+      ],
+      order: {
+        ordem: "ASC" 
+      }
+    });
+
+    todasAsRotasTarde.sort((a, b) => {
+      const numA = parseInt((a.ordem || "").replace(/[^0-9]/g, ''), 10) || 0;
+      const numB = parseInt((b.ordem || "").replace(/[^0-9]/g, ''), 10) || 0;
+      return numA - numB;
+    });
 
     const mencoes: string[] = [];
     if (todasAsRotasTarde.length === 0) return { texto: `📭 Nenhuma rota cadastrada para o turno da Tarde no sistema.`, mencoes };
 
-    // 🚀 CORREÇÃO DEFINITIVA: Busca unificada na data real da tarde operacional. 
-    // Remove o "dataApoioIsoString" que trazia lixo acumulado de outros dias para a tabela atribuicao_final.
+    // Busca unificada na data real da tarde operacional usando BETWEEN seguro contra fuso horário
     const atribuicoes = await this.atribuicaoRepositorio.createQueryBuilder("atrib")
       .leftJoinAndSelect("atrib.motorista", "motorista")
       .leftJoinAndSelect("atrib.rota", "rota")
       .where("atrib.listaJoia = :listaId", { listaId: listaJoia.id })
-      .andWhere("DATE(atrib.dataGeracao) = :dataTardeIsoString", { dataTardeIsoString })
+      .andWhere("atrib.dataGeracao BETWEEN :inicioDiaTarde AND :fimDiaTarde", { inicioDiaTarde, fimDiaTarde })
       .getMany();
 
     let motoristaDoApoio: any = null;
 
     if (tipoDiaAlvo === 'DIA_COMUM') {
-        // Busca o motorista de apoio do dia X-2 na escala mãe de forma limpa
         motoristaDoApoio = await EscalaService.obterMotoristaApoioEscalaMae(
             dataTardeOperacional.getFullYear(), 
             dataTardeOperacional.getMonth(), 
@@ -562,26 +555,25 @@ async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; menc
 
     let texto = `🌅 *Atendimento do turno da tarde:*\n📅 *Execução:* ${diaSemanaTexto} (${dataFormatada})\n\n`;
 
-    todasAsRotasTarde.forEach((rota, index) => {
+    // Instancia o repositório de solicitações para os checks dinâmicos
+    const solicitacoesRepo = AppDataSource.getRepository("SolicitacaoCorrida");
+
+    for (const rota of todasAsRotasTarde) {
       const identificadorRota = (rota.ordem || '').trim(); 
       const nomeBairroOuTrajeto = (rota.nome || '').trim(); 
       const horario = rota.horario || '18h00';
       
-      // BLINDAGEM DO APOIO AUTOMÁTICO: É o apoio real se for dia comum e o elemento físico for o ÚLTIMO do array
-      const ehApoioReal = (tipoDiaAlvo === 'DIA_COMUM') && (index === todasAsRotasTarde.length - 1);
-
-      // CORREÇÃO: Como a busca do banco foi unificada, o filtro de busca local é simplificado e direto por rota
+      const ehApoioReal = (tipoDiaAlvo === 'DIA_COMUM') && (todasAsRotasTarde.indexOf(rota) === todasAsRotasTarde.length - 1);
       const atribExistente = atribuicoes.find(a => a.rota && a.rota.id === rota.id);
 
       let motoristaEscolhido = null;
 
-      // Se houver qualquer atribuição salva no banco (seja manual ou gravação final de hoje), ela prevalece
-      if (atribExistente) {
+      // 🔥 TRAVA DE PRIORIDADE: Se for a vaga de apoio, força o motorista do apoio. 
+      // Não deixa cair na atribuição comum da rota.
+      if (ehApoioReal) {
+          motoristaEscolhido = motoristaDoApoio || null;
+      } else if (atribExistente) {
           motoristaEscolhido = atribExistente.motorista || null;
-      } 
-      // Se não houver nada salvo no banco e for a última rota (Apoio), aplica o fluxo automático vindo de X-2
-      else if (ehApoioReal) {
-          if (motoristaDoApoio) motoristaEscolhido = motoristaDoApoio;
       }
 
       let nomeMotorista = '_(Sem motorista escalado)_';
@@ -612,48 +604,87 @@ async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; menc
 
       if (passageirosDaRota.length > 0) {
         const passageirosOrdenados = [...passageirosDaRota].sort((a, b) => (a.ordem_na_rota || 0) - (b.ordem_na_rota || 0));
-        passageirosOrdenados.forEach((p, idx) => {
+        
+        for (let idx = 0; idx < passageirosOrdenados.length; idx++) {
+          const p = passageirosOrdenados[idx];
           const logradouro = p.endereco?.nome || 'Endereço não cadastrado';
           const numeroCasa = p.endereco?.numero ? `, ${p.endereco.numero}` : '';
           
-          texto += `${idx + 1}️⃣ ${p.nome} - ${logradouro}${numeroCasa}❌\n`;
-        });
+          // BUSCA DINÂMICA DE SOLICITAÇÃO NA TABELA COMPOSTA (Turno Tarde = IDA)
+          const temConfirmacao = await solicitacoesRepo.findOneBy({
+            passageiroId: p.id,
+            dataViagem: dataTardeIsoString,
+            tipoTurno: "IDA"
+          });
+
+          const emojiStatus = temConfirmacao ? '✅' : '❌';
+          texto += `${idx + 1}️⃣ ${p.nome} - ${logradouro}${numeroCasa}${emojiStatus}\n`;
+        }
       } else {
         texto += `_(Sem passageiros vinculados)_\n`;
       }
       texto += `\n`;
-    });
+    }
 
     return { texto: texto.trim(), mencoes };
   }
 
-  /**
-   * Constrói o texto formatado das escalas da Madrugada e Apoio (Dia X + 2) com ícones dinâmicos via banco de dados
-   * GARANTIA: Lista absolutamente todas as rotas da madrugada cadastradas, inclusive as vagas/sem motorista.
-   */
+
+
+/**
+ * Constrói o texto formatado das escalas da Madrugada e Apoio (Dia X + 2) com ícones dinâmicos via banco de dados
+ * GARANTIA: Lista absolutamente todas as rotas da madrugada cadastradas, inclusive as vagas/sem motorista.
+ * CRUZA COM: Tabela solicitacao_corrida para exibir checks verdes dinâmicos.
+ */
   async obterTextoPeriodoMadrugada(diaDoJoinha: number): Promise<{ texto: string; mencoes: string[] }> {
     const dataAtual = new Date();
-    const dataListaJoia = new Date(dataAtual.getFullYear(), dataAtual.getMonth(), diaDoJoinha, 0, 0, 0, 0);
+    let anoDigitado = dataAtual.getFullYear();
+    let mesDigitado = dataAtual.getMonth();
+
+    // 🚀 CORREÇÃO DE TRANSIÇÃO: Se o dia solicitado for maior que o dia atual, pertence ao mês anterior
+    if (diaDoJoinha > dataAtual.getDate()) {
+        const dataMesAnterior = new Date(anoDigitado, mesDigitado - 1, 1);
+        anoDigitado = dataMesAnterior.getFullYear();
+        mesDigitado = dataMesAnterior.getMonth();
+    }
+
+    const dataListaJoia = new Date(anoDigitado, mesDigitado, diaDoJoinha, 0, 0, 0, 0);
     const dataIsoPura = formatarDataIsoPura(dataListaJoia);
 
     const listaJoia = await this.listaRepositorio.createQueryBuilder("lista")
       .where("DATE(lista.dia) = :dataIsoPura", { dataIsoPura })
       .getOne();
 
-    if (!listaJoia) throw new Error(`Nenhuma lista encontrada para o dia ${diaDoJoinha}.`);
+    if (!listaJoia) throw new Error(`Nenhuma lista encontrada para o dia ${diaDoJoinha}/${mesDigitado + 1}.`);
 
-    const dataMadrugadaOperacional = this.calcularDataFutura(listaJoia.dia, 2);
+    // 🚀 CORREÇÃO DA DATA OPERACIONAL (X + 2): Usa a data do banco para o JavaScript virar o mês/ano sem erros
+    const dataMadrugadaOperacional = new Date(listaJoia.dia);
+    dataMadrugadaOperacional.setDate(dataMadrugadaOperacional.getDate() + 2);
+    dataMadrugadaOperacional.setHours(0, 0, 0, 0);
+
+    const dataMadrugadaIsoString = formatarDataIsoPura(dataMadrugadaOperacional);
     const dataFormatada = `${dataMadrugadaOperacional.getDate().toString().padStart(2, '0')}/${(dataMadrugadaOperacional.getMonth() + 1).toString().padStart(2, '0')}/${dataMadrugadaOperacional.getFullYear()}`;
     const diaSemanaTexto = this.obterNomeDiaSemana(dataMadrugadaOperacional);
 
     // 1. BUSCA PRIMEIRO TODAS AS ROTAS DO TURNO DA MADRUGADA CADASTRADAS NO SISTEMA
-    const todasAsRotasMadrugada = await this.rotaRepositorio.createQueryBuilder("rota")
-      .leftJoinAndSelect("rota.passageiros", "passageiro")
-      .leftJoinAndSelect("passageiro.endereco", "endereco")
-      .leftJoinAndSelect("rota.empresas", "empresas")
-      .where("rota.tipo_rota = 'ROTA_MADRUGADA'")
-      .orderBy("CAST(REGEXP_REPLACE(rota.ordem, '[^0-9]', '') AS UNSIGNED)", "ASC")
-      .getMany();
+    const todasAsRotasMadrugada = await this.rotaRepositorio.find({
+      where: { tipo_rota: 'ROTA_MADRUGADA' },
+      relations: [
+        "passageiros", 
+        "passageiros.endereco", 
+        "passageiros.endereco.bairro", 
+        "empresas"
+      ],
+      order: {
+        ordem: "ASC"
+      }
+    });
+
+    todasAsRotasMadrugada.sort((a, b) => {
+      const numA = parseInt((a.ordem || "").replace(/[^0-9]/g, ''), 10) || 0;
+      const numB = parseInt((b.ordem || "").replace(/[^0-9]/g, ''), 10) || 0;
+      return numA - numB;
+    });
 
     const mencoes: string[] = [];
     if (todasAsRotasMadrugada.length === 0) return { texto: `📭 Nenhuma rota cadastrada para o turno da Madrugada no sistema.`, mencoes };
@@ -663,13 +694,16 @@ async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; menc
       .leftJoinAndSelect("atrib.motorista", "motorista")
       .leftJoinAndSelect("atrib.rota", "rota")
       .where("atrib.listaJoiaId = :listaId", { listaId: listaJoia.id })
-      .andWhere("DATE(atrib.dataGeracao) = :dataMadrugadaIsoString", { dataMadrugadaIsoString: formatarDataIsoPura(dataMadrugadaOperacional) })
+      .andWhere("DATE(atrib.dataGeracao) = :dataMadrugadaIsoString", { dataMadrugadaIsoString })
       .getMany();
 
     let texto = `🌌 *Atendimento do turno da madrugada:*\n📅 *Execução:* ${diaSemanaTexto} (${dataFormatada})\n\n`;
 
+    // Instancia o repositório de solicitações para os checks dinâmicos
+    const solicitacoesRepo = AppDataSource.getRepository("SolicitacaoCorrida");
+
     // 3. MAPEAMENTO COMPLETO PERCORRENDO AS ROTAS REAIS
-    todasAsRotasMadrugada.forEach(rota => {
+    for (const rota of todasAsRotasMadrugada) {
       const identificadorRota = (rota.ordem || '').trim(); 
       const nomeBairroOuTrajeto = (rota.nome || '').trim();
       const horario = rota.horario || '04h00';
@@ -705,20 +739,31 @@ async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; menc
 
       if (passageirosDaRota.length > 0) {
         const passageirosOrdenados = [...passageirosDaRota].sort((a, b) => (a.ordem_na_rota || 0) - (b.ordem_na_rota || 0));
-        passageirosOrdenados.forEach((p, idx) => {
+        
+        for (let idx = 0; idx < passageirosOrdenados.length; idx++) {
+          const p = passageirosOrdenados[idx];
           const logradouro = p.endereco?.nome || 'Endereço não cadastrado';
           const numeroCasa = p.endereco?.numero ? `, ${p.endereco.numero}` : '';
           
-          texto += `${idx + 1}️⃣ ${p.nome} - ${logradouro}${numeroCasa}❌\n`;
-        });
+          // BUSCA DINÂMICA DE SOLICITAÇÃO NA TABELA COMPOSTA (Turno Madrugada = VOLTA)
+          const temConfirmacao = await solicitacoesRepo.findOneBy({
+            passageiroId: p.id,
+            dataViagem: dataMadrugadaIsoString,
+            tipoTurno: "VOLTA"
+          });
+
+          const emojiStatus = temConfirmacao ? '✅' : '❌';
+          texto += `${idx + 1}️⃣ ${p.nome} - ${logradouro}${numeroCasa}${emojiStatus}\n`;
+        }
       } else {
         texto += `_(Sem passageiros vinculados)_\n`;
       }
       texto += `\n`;
-    });
+    }
 
     return { texto: texto.trim(), mencoes };
   }
+
   /**
    * Retorna as rotas da tarde formatadas para o consumo do painel visando o payload isomórfico
    */
@@ -803,6 +848,63 @@ async obterTextoPeriodoTarde(diaDoJoinha: number): Promise<{ texto: string; menc
     };
   }
 
+  /**
+ * MOTOR DE CONSULTA ESPECIALISTA: Descobre com precisão absoluta quem é o motorista
+ * responsável por uma rota em uma determinada data operacional, blindado contra as regras do Apoio.
+ */
+public async encontrarMotoristaResponsavel(rotaId: number, listaOrigemId: number, dataOperacional: Date): Promise<any | null> {
+    const atribuicaoRepo = AppDataSource.getRepository(RotaAtribuida);
+    const rotaRepo = AppDataSource.getRepository(Rota);
+
+    const rotaFisica = await rotaRepo.findOneBy({ id: rotaId });
+    if (!rotaFisica) return null;
+
+    // 1. Identifica se é a última rota da tarde (Vaga do Apoio)
+    let ehUltimaRotaTarde = false;
+    if (rotaFisica.tipo_rota === 'ROTA_TARDE') {
+      // 🚨 CORREÇÃO ESSENCIAL: Sincroniza a ordenação numérica com o controlador
+      const todasTarde = await rotaRepo.createQueryBuilder("rota")
+        .where("rota.tipo_rota = 'ROTA_TARDE'")
+        .orderBy("CAST(REGEXP_REPLACE(rota.ordem, '[^0-9]', '') AS UNSIGNED)", "ASC")
+        .getMany();
+
+      if (todasTarde.length > 0 && todasTarde[todasTarde.length - 1].id === rotaId) {
+        ehUltimaRotaTarde = true;
+      }
+    }
+
+    // 2. REGRA ESTRITA PARA A VAGA DE APOIO
+    if (ehUltimaRotaTarde) {
+      console.log(`[ESCALA-CONSULTA] Rota ${rotaId} é Apoio. Rastreando escala mãe...`);
+      
+      // Busca exclusivamente o motorista que cumpre a regra do Apoio na Escala Mãe
+      const motoristaApoioMae = await EscalaService.obterMotoristaApoioEscalaMae(
+        dataOperacional.getFullYear(),
+        dataOperacional.getMonth(),
+        dataOperacional.getDate()
+      );
+
+      if (motoristaApoioMae) {
+        return motoristaApoioMae;
+      }
+
+      // 🔥 TRAVA REAL: Se a regra do apoio não foi cumprida na escala mãe,
+      // retorna NULL. Impede o vazamento para o motorista comum da lista X-1.
+      return null;
+    }
+
+    // 3. REGRA PARA ROTAS COMUNS (Não Apoio) - Mantida 100% original
+    const atribuicaoDiretaComum = await atribuicaoRepo.findOne({
+      where: { rota: { id: rotaId }, listaJoia: { id: listaOrigemId } },
+      relations: ["motorista"]
+    });
+
+    if (atribuicaoDiretaComum && atribuicaoDiretaComum.motorista) {
+      return atribuicaoDiretaComum.motorista;
+    }
+
+    return null;
+  }
   /**
    * Remove o vínculo do motorista da lista baseado no ID da lista e reorganiza a fila
    */

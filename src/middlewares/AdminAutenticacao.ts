@@ -15,17 +15,15 @@ const AdminAutenticacaoMiddleware = (req: Request, res: Response, next: NextFunc
     const { authorization } = req.headers;
 
     if (!authorization) {
-        return res.status(401).json({ message: 'Ação não autorizada! Token ausente.' });
+        return res.status(401).json({ error: 'Ação não autorizada! Token ausente.' });
     }
 
     const partes = authorization.split(' ');
     
-    // 🔍 CORREÇÃO 1: Valida se o índice 0 é exatamente a palavra 'Bearer'
     if (partes.length !== 2 || partes[0] !== 'Bearer') {
-        return res.status(401).json({ message: 'Token mal formatado!' });
+        return res.status(401).json({ error: 'Token mal formatado!' });
     }
 
-    // 🔍 CORREÇÃO 2: Captura estritamente a string do token no índice 1 do array
     const token = partes[1];
 
     try {
@@ -33,7 +31,7 @@ const AdminAutenticacaoMiddleware = (req: Request, res: Response, next: NextFunc
         
         if (!secretKey) {
             console.error('ERRO CRÍTICO: JWT_ADMIN_SECRET não está definido no .env');
-            return res.status(500).json({ message: 'Erro interno de configuração do servidor.' });
+            return res.status(500).json({ error: 'Erro interno de configuração do servidor.' });
         }
 
         const data = jwt.verify(token, secretKey);
@@ -42,11 +40,16 @@ const AdminAutenticacaoMiddleware = (req: Request, res: Response, next: NextFunc
         req.userLogadoId = id;
         req.userRole = 'administrador';
 
+        // Segue para o controller com segurança
         return next();
-    } catch (error) {
-        // Retorna o erro real no console do backend para você diagnosticar se expirou ou a chave está errada
-        console.error("Falha na validação do JWT:", error);
-        return res.status(401).json({ message: "Token de administrador inválido ou expirado" });
+    } catch (error: any) {
+        console.error("Falha na validação do JWT:", error?.message || error);
+        
+        // 🎯 CORREÇÃO: Força o Express a encerrar o fluxo respondendo um JSON estruturado
+        // Alterado de 'message' para 'error' para bater com o catch do seu aplicativo frontend
+        return res.status(401).json({ 
+            error: "Token de administrador inválido ou expirado." 
+        });
     }
 };
 

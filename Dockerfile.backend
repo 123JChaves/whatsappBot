@@ -1,0 +1,23 @@
+# 1. Usa a imagem oficial estável do Node.js
+FROM node:20-alpine
+
+# Instala ferramentas necessárias para compilar dependências nativas (como bcrypt)
+RUN apk add --no-cache make gcc g++ python3
+
+# 2. Define a pasta de trabalho dentro do container
+WORKDIR /app
+
+# 3. Copia apenas os arquivos de dependências primeiro
+COPY package*.json ./
+
+# 4. Instala todas as dependências do projeto
+RUN npm install
+
+# 5. Copia o restante do código-fonte do back-end para o container
+COPY . .
+
+# 6. Expõe a porta interna configurada (8085)
+EXPOSE 8085
+
+# 7. Comando para iniciar a aplicação usando o ts-node-dev do package.json
+CMD ["npm", "run", "dev"]

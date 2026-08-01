@@ -16,6 +16,9 @@ export class Passageiro {
     @Column({ unique: true })
     telefoneWhatsApp!: string;
 
+    @Column({ unique: true, nullable: true })
+    whatsAppLid?: string;
+
     @Column({ default: true })
     ativo!: boolean;
 

@@ -291,54 +291,30 @@ rotasWhatsApp.get('/whatsapp/escala', verificarBot, async (req: Request, res: Re
  */
 rotasWhatsApp.get('/whatsapp/rotas-tarde', verificarBot, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const dataParam = req.query.data as string; // Recebe a data base. Ex: "2026-06-16"
+        const dataParam = req.query.data as string; // Recebe a data base da operação. Ex: "2026-06-16"
         if (!dataParam) {
             return res.status(400).json({ error: "Parâmetro 'data' obrigatório." });
         }
 
-        // 1. EXTRAÇÃO TEMPORAL
+        // 1. EXTRAÇÃO TEMPORAL SEGURA
         const partesData = dataParam.trim().split('-');
         const anoDigitado = parseInt(partesData[0], 10);
         const mesDigitado = parseInt(partesData[1], 10) - 1;
         const diaDigitado = parseInt(partesData[2], 10);
 
-        // Lista de origem do Joinha (Dia Base - 1) -> Ex: Dia 15
-        const dataOrigemJoinha = new Date(anoDigitado, mesDigitado, diaDigitado - 1, 12, 0, 0, 0);
-        const inicioDiaJoia = new Date(dataOrigemJoinha);
-        inicioDiaJoia.setHours(0, 0, 0, 0);
-        const fimDiaJoia = new Date(dataOrigemJoinha);
-        fimDiaJoia.setHours(23, 59, 59, 999);
-
-        // Padrão Normal da Tarde Operacional (Mantém a data enviada) -> Ex: Dia 16
+        // Instancia a data alvo operacional da tarde (Dia X)
         const dataTardeOperacional = new Date(anoDigitado, mesDigitado, diaDigitado, 12, 0, 0, 0);
         const dataTardeIsoString = `${dataTardeOperacional.getFullYear()}-${String(dataTardeOperacional.getMonth() + 1).padStart(2, '0')}-${String(dataTardeOperacional.getDate()).padStart(2, '0')}`;
         const dataExibicaoTexto = `${String(dataTardeOperacional.getDate()).padStart(2, '0')}/${String(dataTardeOperacional.getMonth() + 1).padStart(2, '0')}`;
 
-        // Padrão Estendido da Tarde (+1 Dia da Tarde Operacional para o Apoio físico) -> Ex: Dia 17
-        const dataApoioOperacional = new Date(anoDigitado, mesDigitado, diaDigitado + 1, 12, 0, 0, 0);
-        const dataApoioIsoString = `${dataApoioOperacional.getFullYear()}-${String(dataApoioOperacional.getMonth() + 1).padStart(2, '0')}-${String(dataApoioOperacional.getDate()).padStart(2, '0')}`;
+        // Lista de origem do Joinha (Dia Base - 1) -> Ex: Dia X - 1
+        const dataOrigemJoinha = new Date(dataTardeOperacional);
+        dataOrigemJoinha.setDate(dataOrigemJoinha.getDate() - 1);
+        
+        const inicioDiaJoia = new Date(dataOrigemJoinha); inicioDiaJoia.setHours(0, 0, 0, 0);
+        const fimDiaJoia = new Date(dataOrigemJoinha); fimDiaJoia.setHours(23, 59, 59, 999);
 
-        // REGRA NOVA: Data para buscar a Escala Mãe do APOIO (Dia Base - 2, pois o método
-        // EscalaService.obterMotoristaApoioEscalaMae já faz o cálculo de subtração dos dias para
-        // buscar a escala correta 
-        const dataEscalaApoioMae = new Date(anoDigitado, mesDigitado, diaDigitado, 12, 0, 0, 0);
-        const anoApoioParam = dataEscalaApoioMae.getFullYear();
-        const mesApoioParam = dataEscalaApoioMae.getMonth();
-        const diaApoioParam = dataEscalaApoioMae.getDate();
-
-        // Checagem do Calendário Operacional
-        const registroManual = await AppDataSource.getRepository(DiasTipo).createQueryBuilder("diasTipo")
-            .where("DATE(diasTipo.data) = :dataTardeIsoString", { dataTardeIsoString })
-            .getOne();
-
-        let tipoDiaAlvo: 'DIA_COMUM' | 'DIA_LIVRE' = 'DIA_COMUM';
-        if (registroManual) {
-            tipoDiaAlvo = registroManual.tipo;
-        } else {
-            const diaSemana = dataTardeOperacional.getDay();
-            if (diaSemana === 0 || diaSemana === 6) tipoDiaAlvo = 'DIA_LIVRE';
-        }
-
+        // Localiza a escala mãe correspondente
         const listaOrigem = await AppDataSource.getRepository(ListaJoia).createQueryBuilder("lista")
             .where("lista.dia BETWEEN :inicioDiaJoia AND :fimDiaJoia", { inicioDiaJoia, fimDiaJoia })
             .getOne();
@@ -347,7 +323,7 @@ rotasWhatsApp.get('/whatsapp/rotas-tarde', verificarBot, async (req: Request, re
             return res.status(200).json({ dataExibicaoTexto, dados: [] });
         }
 
-        // 2. BUSCA AS ROTAS FIXAS DA TARDE
+        // 2. BUSCA AS ROTAS DA TARDE NO BANCO DE DADOS
         const todasAsRotasTarde = await AppDataSource.getRepository(Rota).createQueryBuilder("rota")
             .leftJoinAndSelect("rota.passageiros", "passageiro")
             .leftJoinAndSelect("passageiro.endereco", "endereco") 
@@ -361,78 +337,64 @@ rotasWhatsApp.get('/whatsapp/rotas-tarde', verificarBot, async (req: Request, re
             return res.status(200).json({ dataExibicaoTexto, dados: [] });
         }
 
-        // 3. CAPTURA TODAS AS ATRIBUIÇÕES DO PERÍODO DO DUPLO PADRÃO
-        const atribuicoesEfetuadas = await AppDataSource.getRepository(RotaAtribuida).createQueryBuilder("atrib")
-            .leftJoinAndSelect("atrib.motorista", "motorista")
-            .leftJoinAndSelect("atrib.rota", "rota")
-            .where("atrib.listaJoia = :listaId", { listaId: listaOrigem.id })
-            .andWhere(
-                "(DATE(atrib.dataGeracao) = :dataTardeIsoString OR DATE(atrib.dataGeracao) = :dataApoioIsoString)", 
-                { dataTardeIsoString, dataApoioIsoString }
-            )
-            .getMany();
+        const { EscalaService } = require("../service/whatsapp/EscalaService");
+        const escalaService = new EscalaService();
+        const solicitacoesRepo = AppDataSource.getRepository("SolicitacaoCorrida");
 
-        let posicaoApoioCalculada = todasAsRotasTarde.length;
-        let motoristaDoApoio: any = null;
+        const payload: any[] = [];
 
-        if (tipoDiaAlvo === 'DIA_COMUM') {
-            try {
-                // Executa a busca estrita com parâmetros retrocedidos para X-2 e filtrando por Categoria
-                motoristaDoApoio = await EscalaService.obterMotoristaApoioEscalaMae(anoApoioParam, mesApoioParam, diaApoioParam);
-            } catch (serviceErr) {
-                console.error("⚠️ Falha ao recuperar apoio do serviço:", serviceErr);
-                motoristaDoApoio = null;
-            }
-        }
+        // 3. MAPEAMENTO SINCRONIZADO VIA LOOPS SEQUENCIAIS (Garante suporte a Promises no .map)
+        for (let index = 0; index < todasAsRotasTarde.length; index++) {
+            const rota = todasAsRotasTarde[index];
 
-        // 4. MAPEAMENTO APLICANDO O DUPLO PADRÃO DE REMOÇÃO
-        const payload = todasAsRotasTarde.map((rota, index) => {
-            const numeroRotaAtual = rota.ordem ? parseInt(rota.ordem.replace(/[^0-9]/g, ''), 10) : 0;
-            const ehApoioReal = (tipoDiaAlvo === 'DIA_COMUM') && (numeroRotaAtual === posicaoApoioCalculada);
-
-            const dataFiltroAlvo = ehApoioReal ? dataApoioIsoString : dataTardeIsoString;
-            
-            const atribExistente = atribuicoesEfetuadas.find(a => 
-                a.rota?.id === rota.id && 
-                a.dataGeracao && 
-                new Date(a.dataGeracao).toISOString().split('T')[0] === dataFiltroAlvo
+            // 🚀 CORREÇÃO 1: Invoca o motor de busca especialista e isolado para achar o motorista
+            const motoristaEfetivo = await escalaService.encontrarMotoristaResponsavel(
+                rota.id,
+                listaOrigem.id,
+                dataTardeOperacional
             );
 
-            let motoristaFinal = null;
-            let tipoFinal = ehApoioReal ? "APOIO" : "ROTA";
+            // Mapeamento atômico dos passageiros injetando os checks verdes dinâmicos
+            const listaPassageirosMapeados = [];
+            const passageirosOrdenados = (rota.passageiros || []).sort((a, b) => (a.ordem_na_rota || 0) - (b.ordem_na_rota || 0));
 
-            if (atribExistente) {
-                motoristaFinal = atribExistente.motorista || null;
-                tipoFinal = atribExistente.tipoAtribuicao || tipoFinal;
-            } 
-            else if (ehApoioReal) {
-                if (motoristaDoApoio) {
-                    motoristaFinal = motoristaDoApoio;
-                }
-            }
+            for (const p of passageirosOrdenados) {
+                // 🚀 CORREÇÃO 2: Cruza em tempo real com a tabela intermediária de solicitações (Tarde = IDA)
+                const temConfirmacao = await solicitacoesRepo.findOneBy({
+                    passageiroId: p.id,
+                    dataViagem: dataTardeIsoString,
+                    tipoTurno: "ID" as any // "IDA" conforme seu enum do banco
+                });
 
-            const posicaoJoinhaFinal = motoristaFinal ? (ehApoioReal ? posicaoApoioCalculada : index + 1) : null;
-
-            return {
-                id: atribExistente?.id || null,
-                id_rota: rota.id,
-                nomeRota: rota.nome || "",
-                ordem: rota.ordem || "",
-                horario: rota.horario || '18h00',
-                tipo: tipoFinal, 
-                motorista: motoristaFinal ? { id: motoristaFinal.id, nome: motoristaFinal.nome, posicaoJoinha: posicaoJoinhaFinal } : null,
-                empresas: (rota.empresas || []).map(e => ({ id: e.id, nome: e.nome, icone: e.icone || null })),
-                passageiros: (rota.passageiros || []).sort((a, b) => (a.ordem_na_rota || 0) - (b.ordem_na_rota || 0)).map(p => ({
+                listaPassageirosMapeados.push({
                     id_passageiro: p.id, 
                     nome: p.nome, 
                     telefoneWhatsApp: p.telefoneWhatsApp, 
                     ordem_na_rota: p.ordem_na_rota,
+                    // 🔥 Injeta a flag no payload para o frontend pintar o check verde na tela do painel
+                    solicitado: !!temConfirmacao, 
                     bairro: p.endereco?.bairro?.nome || null, 
                     logradouro: p.endereco?.nome || "Não cadastrado", 
                     numero: p.endereco?.numero || null
-                }))
-            };
-        });
+                });
+            }
+
+            payload.push({
+                id_atribuicao: listaOrigem.id, // ID unificado da escala operante
+                id_rota: rota.id,
+                nomeRota: rota.nome || "",
+                ordem: rota.ordem || "",
+                horario: rota.horario || '18h00',
+                tipo: rota.id === todasAsRotasTarde[todasAsRotasTarde.length - 1].id ? "APOIO" : "ROTA", 
+                motorista: motoristaEfetivo ? { 
+                    id: motoristaEfetivo.id, 
+                    nome: motoristaEfetivo.nome, 
+                    posicaoJoinha: index + 1 
+                } : null,
+                empresas: (rota.empresas || []).map(e => ({ id: e.id, nome: e.nome, icone: e.icone || null })),
+                passageiros: listaPassageirosMapeados
+            });
+        }
 
         return res.status(200).json({ dataExibicaoTexto, dados: payload });
 
@@ -447,12 +409,14 @@ rotasWhatsApp.get('/whatsapp/rotas-tarde', verificarBot, async (req: Request, re
  * 
  * GARANTIA: Mapeia as rotas da madrugada de forma achatada diretamente na raiz,
  * respeitando as posições vazias (null) caso faltem motoristas na fila do pátio.
+ * CRUZA COM: Tabela solicitacao_corrida para exibir checks verdes dinâmicos na tela.
  */
 rotasWhatsApp.get('/whatsapp/rotas-madrugada', verificarBot, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const dataParam = req.query.data as string;
+        const dataParam = req.query.data as string; // Recebe a data base da escala (Dia X). Ex: "2026-06-15"
         if (!dataParam) return res.status(400).json({ error: "Parâmetro 'data' obrigatório." });
 
+        // 1. RESOLUÇÃO DE CALENDÁRIO PREDITIVO (Dia X + 2) -> Viagem ocorre na madrugada do Dia 17
         const dataJoiaPura = obterDataAlvoSemFuso(dataParam);
         const dataMadrugadaOperacional = new Date(dataJoiaPura);
         dataMadrugadaOperacional.setDate(dataMadrugadaOperacional.getDate() + 2);
@@ -461,6 +425,7 @@ rotasWhatsApp.get('/whatsapp/rotas-madrugada', verificarBot, async (req: Request
         const dataMadrugadaIsoString = `${dataMadrugadaOperacional.getFullYear()}-${String(dataMadrugadaOperacional.getMonth() + 1).padStart(2, '0')}-${String(dataMadrugadaOperacional.getDate()).padStart(2, '0')}`;
         const dataExibicaoTexto = `${String(dataMadrugadaOperacional.getDate()).padStart(2, '0')}/${String(dataMadrugadaOperacional.getMonth() + 1).padStart(2, '0')}`;
 
+        // Localiza a lista de joinhas (Escala Mãe / Origem)
         const listaOrigem = await AppDataSource.getRepository(ListaJoia).createQueryBuilder("lista")
             .where("DATE(lista.dia) = :dataJoiaIsoString", { dataJoiaIsoString })
             .getOne();
@@ -469,7 +434,7 @@ rotasWhatsApp.get('/whatsapp/rotas-madrugada', verificarBot, async (req: Request
             return res.status(200).json({ dataExibicaoTexto, dados: [] });
         }
 
-        // 🚀 JUNÇÃO CORRETA: Encadeia os relacionamentos a partir do alias 'passageiro' para evitar erros no TypeORM
+        // 2. BUSCA AS ROTAS FISICAS DA MADRUGADA NO SISTEMA
         const todasAsRotasMadrugada = await AppDataSource.getRepository(Rota).createQueryBuilder("rota")
             .leftJoinAndSelect("rota.passageiros", "passageiro")
             .leftJoinAndSelect("passageiro.endereco", "endereco")
@@ -483,57 +448,71 @@ rotasWhatsApp.get('/whatsapp/rotas-madrugada', verificarBot, async (req: Request
             return res.status(200).json({ dataExibicaoTexto, dados: [] });
         }
 
-        const atribuicoesGravadas = await AppDataSource.getRepository(RotaAtribuida).createQueryBuilder("atrib")
-            .leftJoinAndSelect("atrib.motorista", "motorista")
-            .leftJoinAndSelect("atrib.rota", "rota")
-            .where("atrib.listaJoia = :listaId", { listaId: listaOrigem.id })
-            .andWhere("DATE(atrib.dataGeracao) = :dataMadrugadaIsoString", { dataMadrugadaIsoString })
-            .getMany();
+        const { EscalaService } = require("../service/whatsapp/EscalaService");
+        const escalaService = new EscalaService();
+        const solicitacoesRepo = AppDataSource.getRepository("SolicitacaoCorrida");
 
-        const payload = todasAsRotasMadrugada.map((rota, index) => {
-            const atribExistente = atribuicoesGravadas.find(a => a.rota?.id === rota.id);
+        const payload: any[] = [];
 
-            let motoristaFinal = null;
-            let tipoFinal = "ROTA";
+        // 3. PROCESSAMENTO MOLECULAR ITERATIVO COM SUPORTE A ASYNC/AWAIT
+        for (let index = 0; index < todasAsRotasMadrugada.length; index++) {
+            const rota = todasAsRotasMadrugada[index];
 
-            // 🧠 TRAVA DE INTERVENÇÃO MANUAL DA MADRUGADA:
-            // Se houver registro manual do admin, preserva as alterações mesmo que a lista de joias mude
-            if (atribExistente && (atribExistente.ehApoioManual || (atribExistente as any).ehApoioManual)) {
-                motoristaFinal = atribExistente.motorista || null;
-                tipoFinal = atribExistente.tipoAtribuicao || "ROTA";
+            // 🚀 INTERGRAÇÃO DO MOTOR ESPECIALISTA: Resolve as travas do Apoio Automático/Manual e rotas fixas
+            const motoristaEfetivo = await escalaService.encontrarMotoristaResponsavel(
+                rota.id,
+                listaOrigem.id,
+                dataMadrugadaOperacional
+            );
+
+            // Mapeamento e injeção assíncrona de presença nos passageiros
+            const listaPassageirosMapeados = [];
+            const passageirosOrdenados = (rota.passageiros || []).sort((a, b) => (a.ordem_na_rota || 0) - (b.ordem_na_rota || 0));
+
+            for (const p of passageirosOrdenados) {
+                // 🚀 CRUZAMENTO DE DADOS: Turno da Madrugada valida presenças do tipo VOLTA
+                const temConfirmacao = await solicitacoesRepo.findOneBy({
+                    passageiroId: p.id,
+                    dataViagem: dataMadrugadaIsoString,
+                    tipoTurno: "VOLTA"
+                });
+
+                listaPassageirosMapeados.push({
+                    id_passageiro: p.id, 
+                    nome: p.nome, 
+                    telefoneWhatsApp: p.telefoneWhatsApp, 
+                    ordem_na_rota: p.ordem_na_rota,
+                    // 🔥 Injeta a flag booleana real para o aplicativo frontend acender o check verde na tela
+                    solicitado: !!temConfirmacao, 
+                    bairro: p.endereco?.bairro?.nome || null, 
+                    logradouro: p.endereco?.nome || "Não cadastrado", 
+                    numero: p.endereco?.numero || null
+                });
             }
-            // FLUXO REGULAR AUTOMÁTICO: Caso não tenha trava manual, exibe a escala gerada pelo robô
-            else if (atribExistente) {
-                motoristaFinal = atribExistente.motorista || null;
-                tipoFinal = atribExistente.tipoAtribuicao || "ROTA";
-            }
 
-            let posicaoJoinhaFinal = motoristaFinal ? index + 1 : null;
+            // Descobre o tipo de atribuição consultando se há linha direta salva, mantendo o fallback padrão
+            const atribExistente = await AppDataSource.getRepository(RotaAtribuida).findOneBy({
+                rota: { id: rota.id },
+                listaJoia: { id: listaOrigem.id }
+            });
+            const tipoFinal = atribExistente?.tipoAtribuicao || "ROTA";
 
-            return {
+            payload.push({
                 id: atribExistente?.id || null,
                 id_rota: rota.id,
                 nomeRota: rota.nome || "",
                 ordem: rota.ordem || "",
                 horario: rota.horario || '04h00',
                 tipo: tipoFinal, 
-                motorista: motoristaFinal ? { 
-                    id: motoristaFinal.id, 
-                    nome: motoristaFinal.nome, 
-                    posicaoJoinha: posicaoJoinhaFinal 
+                motorista: motoristaEfetivo ? { 
+                    id: motoristaEfetivo.id, 
+                    nome: motoristaEfetivo.nome, 
+                    posicaoJoinha: index + 1 
                 } : null,
                 empresas: (rota.empresas || []).map(e => ({ id: e.id, nome: e.nome, icone: e.icone || null })),
-                passageiros: (rota.passageiros || []).sort((a, b) => (a.ordem_na_rota || 0) - (b.ordem_na_rota || 0)).map(p => ({
-                    id_passageiro: p.id, 
-                    nome: p.nome, 
-                    telefoneWhatsApp: p.telefoneWhatsApp, 
-                    ordem_na_rota: p.ordem_na_rota,
-                    bairro: p.endereco?.bairro?.nome || null, 
-                    logradouro: p.endereco?.nome || "Não cadastrado", 
-                    numero: p.endereco?.numero || null
-                }))
-            };
-        });
+                passageiros: listaPassageirosMapeados
+            });
+        }
 
         return res.status(200).json({ dataExibicaoTexto, dados: payload });
 
@@ -546,26 +525,20 @@ rotasWhatsApp.get('/whatsapp/rotas-madrugada', verificarBot, async (req: Request
  */
 rotasWhatsApp.post('/whatsapp/escala/redistribuir', verificarBot, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // 1. Captura e valida a data enviada pela query string (Ex: "2026-06-16")
         const dataParam = req.query.data as string;
         if (!dataParam) return res.status(400).json({ error: "Parâmetro 'data' obrigatório." });
 
-        // Extração cirúrgica de data baseada em string para ignorar fuso horário do Node.js
         const partesData = dataParam.trim().split('-');
         const anoDigitado = parseInt(partesData[0], 10);
         const mesDigitado = parseInt(partesData[1], 10) - 1;
         const diaDigitado = parseInt(partesData[2], 10);
 
-        // Data real da operação (Ex: Dia 16)
         const dataAlvo = new Date(anoDigitado, mesDigitado, diaDigitado, 12, 0, 0, 0);
-        
-        // Data de origem da Lista de Joias (X - 1) -> Ex: Dia 15
         const dataOrigemJoinha = new Date(anoDigitado, mesDigitado, diaDigitado - 1, 12, 0, 0, 0);
 
         const dataOrigemJoiaIsoString = `${dataOrigemJoinha.getFullYear()}-${String(dataOrigemJoinha.getMonth() + 1).padStart(2, '0')}-${String(dataOrigemJoinha.getDate()).padStart(2, '0')}`;
         const dataExibicaoTexto = `${String(dataAlvo.getDate()).padStart(2, '0')}/${String(dataAlvo.getMonth() + 1).padStart(2, '0')}`;
 
-        // Busca a lista de origem
         const listaOrigem = await AppDataSource.getRepository(ListaJoia).createQueryBuilder("lista")
             .where("DATE(lista.dia) = :dataOrigemJoiaIsoString", { dataOrigemJoiaIsoString })
             .getOne();
@@ -574,10 +547,9 @@ rotasWhatsApp.post('/whatsapp/escala/redistribuir', verificarBot, async (req: Re
             return res.status(404).json({ error: "Nenhuma lista de Joias encontrada para a data informada." });
         }
 
-        // 🚀 Executa o processamento do robô baseado na lista encontrada
-        await botInstance.escalaService.gerarEscalaCompleta(listaOrigem.id);
+        // 🚀 CORREÇÃO 1: Captura o relatório em texto gerado pelo robô
+        const relatorioTextoWhatsapp = await botInstance.escalaService.gerarEscalaCompleta(listaOrigem.id);
 
-        // 2. Busca a nova fila gerada para devolver ao painel atualizado
         const filaJoinhas = await AppDataSource.getRepository(OrdemJoinha).find({
             where: { listaJoia: { id: listaOrigem.id } },
             relations: ["motorista"],
@@ -588,21 +560,24 @@ rotasWhatsApp.post('/whatsapp/escala/redistribuir', verificarBot, async (req: Re
             }
         });
 
-        // CORREÇÃO: Calcula a meta baseada exatamente no dia alvo da escala (Ex: Dia 16)
         const meta = await calcularMetaConfiguracao(dataAlvo);
-        if (!meta) return res.status(500).json({ error: "Falha ao calcular configurações da meta." });
+        
+        // 🚀 CORREÇÃO 2: Se a meta falhar, criamos um fallback seguro em vez de travar com erro ou retornar nulo
+        const tipoDiaSeguro = meta?.tipoDia || 'DIA_COMUM';
+        const limitePlantaoSeguro = meta?.limitePlantao || 4;
+        const posicaoDoApoioSeguro = meta?.posicaoDoApoio || 15;
+        const qtdMaxRotasValidasSeguro = meta?.qtdMaxRotasValidas || 25;
 
         const payload = filaJoinhas.map((reg, index) => {
             const posicao = index + 1;
             let category: "PLANTAO" | "ROTA" | "APOIO" | "BACKUP" | "LIVRE" = "BACKUP";
 
-            if (meta.tipoDia === 'DIA_COMUM') {
-                if (posicao <= meta.limitePlantao) category = "PLANTAO";
-                else if (posicao === meta.posicaoDoApoio) category = "APOIO";
-                else if (posicao > meta.limitePlantao && posicao <= meta.qtdMaxRotasValidas) category = "ROTA";
+            if (tipoDiaSeguro === 'DIA_COMUM') {
+                if (posicao <= limitePlantaoSeguro) category = "PLANTAO";
+                else if (posicao === posicaoDoApoioSeguro) category = "APOIO";
+                else if (posicao > limitePlantaoSeguro && posicao <= qtdMaxRotasValidasSeguro) category = "ROTA";
             } else {
-                // Alinhado com o padrão de dia livre utilizando o limite vindo da meta
-                if (posicao <= meta.limitePlantao) category = "PLANTAO";
+                if (posicao <= limitePlantaoSeguro) category = "PLANTAO";
                 else category = "LIVRE";
             }
 
@@ -619,11 +594,13 @@ rotasWhatsApp.post('/whatsapp/escala/redistribuir', verificarBot, async (req: Re
             };
         });
 
+        // Retorna o JSON perfeitamente estruturado para o Axios do React Native receber
         return res.status(200).json({
             message: "Escala resetada e redistribuída com sucesso!",
-            tipoDia: meta.tipoDia,
-            ehSegundaFeira: dataAlvo.getDay() === 1 && meta.tipoDia === 'DIA_COMUM',
-            limitePlantao: meta.limitePlantao,
+            relatorio: relatorioTextoWhatsapp, // Texto do robô guardado em segurança
+            tipoDia: tipoDiaSeguro,
+            ehSegundaFeira: dataAlvo.getDay() === 1 && tipoDiaSeguro === 'DIA_COMUM',
+            limitePlantao: limitePlantaoSeguro,
             dataExibicaoTexto,
             listaId: listaOrigem.id, 
             dados: payload
