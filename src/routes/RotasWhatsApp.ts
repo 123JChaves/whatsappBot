@@ -15,6 +15,7 @@ import { Motorista } from "../models/Motorista";
 import { ILike } from "typeorm";
 import { ListaRota } from "../models/ListaRota";
 import { EscalaService } from "../service/whatsapp/EscalaService";
+import { eventBus, CanaisEventos } from "../infra/eventos/EventBus";
 
 const rotasWhatsApp = Router();
 
@@ -87,6 +88,7 @@ rotasWhatsApp.post('/whatsapp/gerar-escala', verificarBot, async (req: Request, 
 
     // Executa a escala perfeita cruzando as posições e salvando na tabela de atribuições
     const relatorio = await botInstance.escalaService.gerarEscalaCompleta(listaJoia.id);
+    await eventBus.publicar(CanaisEventos.ESCALA_GERADA, { listaJoiaId: listaJoia.id, origem: "app:gerar-escala" });
     
     // Dispara a mensagem oficial idêntica ao fluxo do robô do WhatsApp
     const diaExec1 = String(dataExecucaoObjeto.getDate()).padStart(2, '0');
@@ -931,6 +933,7 @@ rotasWhatsApp.post('/whatsapp/escala/refazer', verificarBot, async (req: Request
 
     // Executa o recálculo da escala completa indexado à ID correta do banco
     const relatorioFormatado = await botInstance.escalaService.gerarEscalaCompleta(listaJoiaEncontrada.id);
+    await eventBus.publicar(CanaisEventos.ESCALA_GERADA, { listaJoiaId: listaJoiaEncontrada.id, origem: "app:refazer-escala" });
     
     // Se a flag enviarWhats for verdadeira (clique do botão Escala), joga no grupo oficial
     if (enviarWhats === true) {

@@ -1,21 +1,41 @@
 class TextoHelper {
-  /**
-   * Remove tags HTML, scripts e caracteres especiais de um nome,
-   * preservando apenas letras (incluindo acentuação) e espaços.
-   */
-  public static sanitizarNome(nome: string): string {
-    if (!nome) return '';
-    
-    return nome
-      // 1. Remove qualquer tag HTML/XML inteira (Prevenção direta contra tags <script>)
-      .replace(/<[^>]*>/g, '')
-      // 2. Mantém apenas letras (A-Z, a-z), caracteres acentuados latinos e espaços
-      .replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s]/g, '')
-      // 3. Substitui múltiplos espaços seguidos por um único espaço
-      .replace(/\s+/g, ' ')
-      // 4. Remove espaços em branco no início e no fim
-      .trim();
-  }
+
+    public static sanitizarNome(nome: string): string {
+        if (!nome) return '';
+
+        return nome
+            .replace(/<[^>]*>/g, '')
+            .replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    public static sanitizarNumero(numero: string | number): string {
+        if (numero === null || numero === undefined || numero === '') return '';
+
+        return String(numero)
+            .replace(/<[^>]*>/g, '')
+            .replace(/[^A-Za-z0-9]/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+    };
+
+    public static sanitizarPreco(valor: string | number): number {
+        if (valor === null || valor === undefined || valor === '') return 0;
+        if (typeof valor === 'number') return valor;
+
+        let limpo = valor
+            .replace(/[^0-9,.]/g, '')
+            .replace(',', '.');
+        return parseFloat(limpo) || 0;
+    };
+
+    public static sanitizarDigitos(dado: string | number): number {
+        if (dado === null || dado === undefined || dado === '') return 0;
+        const numerosPuros = String(dado).replace(/[^0-9]/g, '');
+        return parseInt(numerosPuros, 10) || 0;
+    };
+
 }
 
 export default TextoHelper;

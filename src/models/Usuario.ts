@@ -1,5 +1,6 @@
-import { BeforeInsert, BeforeUpdate, Column, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { BeforeInsert, BeforeUpdate, Column, Entity, JoinTable, ManyToMany, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import * as bcrypt from 'bcrypt';
+import { Papeis } from "./Papeis";
 
 @Entity('usuario')
 export class Usuario {
@@ -24,6 +25,10 @@ export class Usuario {
 
     @Column({ select: false })
     senha!: string;
+
+    @ManyToMany(() => Papeis, (papeis) => papeis.usuarios, { eager: true })
+    @JoinTable({ name: 'usuario_papeis' })
+    papeis!: Papeis[];
 
     @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
     dataDeRegistro!: Date;

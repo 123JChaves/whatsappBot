@@ -19,7 +19,6 @@ export class Empresa {
     @Column({ type: "varchar", nullable: true, name: "icone" })
     icone?: string;
 
-    // Refatorado: agora a empresa pode pertencer a várias rotas simultaneamente
     @ManyToMany(() => Rota, rota => rota.empresas)
     rotas?: Rota[];
 

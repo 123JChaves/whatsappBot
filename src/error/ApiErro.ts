@@ -4,7 +4,8 @@ class ApiErro extends Error {
     constructor(mensagem: string, statusDeCodigo: number) {
         super(mensagem);
         this.statusDeCodigo = statusDeCodigo;
-    }
-}
+        Object.setPrototypeOf(this, new.target.prototype);
+    };
+};
 
 export default ApiErro;

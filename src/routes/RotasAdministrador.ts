@@ -9,32 +9,27 @@ rotasAdministrador.post('/administrador/login',
 );
 
 // Rota para listar todos os administradores
-rotasAdministrador.get('/administradores',
-     
+rotasAdministrador.get('/administradores',    
     (AdministradorController.listarAdministradores)
 );
 
 // Rota para exibir um administrador (por ID)
-rotasAdministrador.get('/administrador/:id', 
-    
+rotasAdministrador.get('/administrador/:id',    
     (AdministradorController.mostrarUmAdministrador)
 );
 
-// Rota para cadastrar administrador
-rotasAdministrador.post('/administrador', 
-     
+// Rota para cadastrara administrador
+rotasAdministrador.post('/administrador',      
     (AdministradorController.cadastrarAdministrador)
 );
 
 // Rota para editar um administrador
 rotasAdministrador.put('/administrador/:id', 
-
     (AdministradorController.editarAdministrador)
 );
 
 // Rota para deletar um administrador
 rotasAdministrador.delete('/administrador/:id', 
-
     (AdministradorController.deletarAdministrador)
 );
 

@@ -7,6 +7,8 @@ import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigator
 import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 import validarCNPJCompleto from "../utils/validators/ValidacaoDeCnpj";
 import TextoHelper from "../utils/helpers/TextoHelper";
+import { cache, ChavesCache, TTL } from "../infra/cache/CacheService";
+import { eventBus, CanaisEventos } from "../infra/eventos/EventBus";
 
 class EmpresaService {
 
@@ -14,6 +16,10 @@ class EmpresaService {
 
     // Service para listar todas as empresas:
     static async listarEmpresas(): Promise<Empresa[]>{
+        return cache.obterOuCarregar(ChavesCache.empresasTodas(), TTL.EMPRESAS, () => this.listarEmpresasDoBanco());
+    }
+
+    private static async listarEmpresasDoBanco(): Promise<Empresa[]>{
         const empresas = await this.empresaRepositorio.find({
             select: {
                 id: true,
@@ -27,6 +33,10 @@ class EmpresaService {
 
     // Service para listar uma empresa (por ID):
     static async mostrarUmaEmpresa(id: number): Promise<Empresa>{
+        return cache.obterOuCarregar(ChavesCache.empresaPorId(id), TTL.EMPRESAS, () => this.mostrarUmaEmpresaDoBanco(id));
+    }
+
+    private static async mostrarUmaEmpresaDoBanco(id: number): Promise<Empresa>{
         const empresa = await this.empresaRepositorio.findOne({
             where: { id },
             select: {
@@ -129,6 +139,7 @@ class EmpresaService {
             this.empresaRepositorio.create(dados)
         );
 
+        await this.aposAlteracao(novaEmpresa.id, 'CRIADA');
         return novaEmpresa;
     };
 
@@ -161,8 +172,16 @@ class EmpresaService {
         this. empresaRepositorio.merge(empresaAtual, dados);
         const empresaEditada = await this.empresaRepositorio.save(empresaAtual);
 
+        await this.aposAlteracao(id, 'EDITADA');
         return empresaEditada as Empresa;
     };
+
+    // INVALIDAÇÃO + EVENTO (rotas também exibem empresas, por isso as duas famílias de chaves)
+    private static async aposAlteracao(empresaId: number, acao: 'CRIADA' | 'EDITADA' | 'EXCLUIDA'): Promise<void> {
+        await cache.invalidarPorPrefixo(ChavesCache.PREFIXO_EMPRESAS);
+        await cache.invalidarPorPrefixo(ChavesCache.PREFIXO_ROTAS);
+        await eventBus.publicar(CanaisEventos.EMPRESA_ALTERADA, { empresaId, acao });
+    }
 
     // Service para deletar a empresa:
     static async deletarEmpresa(id: number): Promise<Empresa>{
@@ -173,6 +192,7 @@ class EmpresaService {
         };
 
         await this.empresaRepositorio.remove(empresaDeletada);
+        await this.aposAlteracao(id, 'EXCLUIDA');
 
         return empresaDeletada;
     }

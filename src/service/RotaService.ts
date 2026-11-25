@@ -5,6 +5,8 @@ import { Empresa } from "../models/Empresa";
 import { ListaRota } from "../models/ListaRota";
 import NaoEncontradoErro from "../error/NaoEncontrado.404";
 import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
+import { cache, ChavesCache, TTL } from "../infra/cache/CacheService";
+import { eventBus, CanaisEventos } from "../infra/eventos/EventBus";
 
 class RotaService {
     private static rotaRepositorio = AppDataSource.getRepository(Rota);
@@ -13,7 +15,12 @@ class RotaService {
     private static listaRotaRepositorio = AppDataSource.getRepository(ListaRota);
 
     // Service para listar todas as rotas:
+    // CACHE-ASIDE: leitura frequente do App (menus Tarde/Madrugada) servida pelo Redis
     static async listarRotas(): Promise<Rota[]> {
+        return cache.obterOuCarregar(ChavesCache.rotasTodas(), TTL.ROTAS, () => this.listarRotasDoBanco());
+    }
+
+    private static async listarRotasDoBanco(): Promise<Rota[]> {
         const listaDeRotasBrutas = await this.rotaRepositorio.find({
             relations: ["passageiros", "passageiros.endereco", "passageiros.endereco.bairro", "empresas", "listaRota"],
             order: { 
@@ -32,6 +39,10 @@ class RotaService {
 
     // Service para listar rotas por TURNO (Tarde ou Madrugada):
     static async listarPorTurno(tipo: 'ROTA_TARDE' | 'ROTA_MADRUGADA'): Promise<Rota[]> {
+        return cache.obterOuCarregar(ChavesCache.rotasPorTurno(tipo), TTL.ROTAS, () => this.listarPorTurnoDoBanco(tipo));
+    }
+
+    private static async listarPorTurnoDoBanco(tipo: 'ROTA_TARDE' | 'ROTA_MADRUGADA'): Promise<Rota[]> {
         const listaDeRotasPorTurno = await this.rotaRepositorio.find({
             where: { tipo_rota: tipo },
             relations: ["passageiros", "passageiros.endereco", "passageiros.endereco.bairro", "empresas"],
@@ -51,6 +62,10 @@ class RotaService {
 
     // Service para mostrar uma rota específica (por ID):
     static async mostrarUmaRota(id: number): Promise<Rota> {
+        return cache.obterOuCarregar(ChavesCache.rotaPorId(id), TTL.ROTAS, () => this.mostrarUmaRotaDoBanco(id));
+    }
+
+    private static async mostrarUmaRotaDoBanco(id: number): Promise<Rota> {
         const rota = await this.rotaRepositorio.findOne({
             where: { id },
             relations: ["passageiros", "passageiros.endereco", "passageiros.endereco.bairro", "empresas", "listaRota"],
@@ -104,6 +119,7 @@ class RotaService {
             await this.vincularPassageirosARota(rotaSalva, dados.passageirosIds);
         }
 
+        await this.aposAlteracao(rotaSalva.id, 'CRIADA');
         return rotaSalva;
     }
 
@@ -137,7 +153,9 @@ class RotaService {
         const { passageirosIds, empresaId, ...dadosRestantes } = dados;
         this.rotaRepositorio.merge(rotaExistente, dadosRestantes);
         
-        return await this.rotaRepositorio.save(rotaExistente);
+        const rotaEditada = await this.rotaRepositorio.save(rotaExistente);
+        await this.aposAlteracao(id, 'EDITADA');
+        return rotaEditada;
     }
 
     // Service para excluir rota:
@@ -152,6 +170,13 @@ class RotaService {
         );
         
         await this.rotaRepositorio.remove(rota);
+        await this.aposAlteracao(id, 'EXCLUIDA');
+    }
+
+    // INVALIDAÇÃO + EVENTO: limpa o cache local imediatamente e avisa as demais instâncias via Pub/Sub
+    private static async aposAlteracao(rotaId: number, acao: 'CRIADA' | 'EDITADA' | 'EXCLUIDA'): Promise<void> {
+        await cache.invalidarPorPrefixo(ChavesCache.PREFIXO_ROTAS);
+        await eventBus.publicar(CanaisEventos.ROTA_ALTERADA, { rotaId, acao });
     }
 
     // Helper para vincular passageiros um a um garantindo a ordem numérica:

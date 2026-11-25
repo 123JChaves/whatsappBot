@@ -5,6 +5,8 @@ import IMotorista from "../interfaces/IMotorista";
 import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigatorios";
 import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 import TextoHelper from "../utils/helpers/TextoHelper";
+import { cache, ChavesCache, TTL } from "../infra/cache/CacheService";
+import { eventBus, CanaisEventos } from "../infra/eventos/EventBus";
 
 class MotoristaService {
     private static motoristaRepositorio = AppDataSource.getRepository(Motorista);
@@ -28,6 +30,10 @@ class MotoristaService {
 
     // Service para listar todos os motoristas
     static async listarMotoristas(): Promise<Motorista[]> {
+        return cache.obterOuCarregar(ChavesCache.motoristasTodos(), TTL.MOTORISTAS, () => this.listarMotoristasDoBanco());
+    }
+
+    private static async listarMotoristasDoBanco(): Promise<Motorista[]> {
         return await this.motoristaRepositorio.find({
             select: {
                 id: true,
@@ -84,6 +90,7 @@ class MotoristaService {
         if (motorista && motorista.whatsAppLid !== jidLimpo) {
             motorista.whatsAppLid = jidLimpo;
             await this.motoristaRepositorio.save(motorista);
+            await this.aposAlteracao(motorista.id, 'LID_VINCULADO');
             console.log(`[SISTEMA CONTRA FALHAS] 🏅 LID ${jidLimpo} vinculado ao motorista: ${motorista.nome}`);
         }
     }
@@ -91,23 +98,28 @@ class MotoristaService {
     // Service para cadastrar motorista:
     static async cadastrarMotorista(dados: IMotorista): Promise<Motorista> {
         validarCamposObrigatorios<Motorista>(dados as Motorista, 
-            [ 'nome', 'telefoneWhatsApp', 'whatsAppLid' ]
+            [ 'nome', 'telefoneWhatsApp' ]
         );
 
-        if(dados.nome) {
+        if (dados.nome) {
             dados.nome = TextoHelper.sanitizarNome(dados.nome);
         }
 
-        dados.whatsAppLid = dados.whatsAppLid.replace(/:[0-9]+/, '');
+        // ✅ CORREÇÃO: Só sanitiza e checa duplicidade se o whatsAppLid tiver sido enviado
+        if (dados.whatsAppLid) {
+            dados.whatsAppLid = dados.whatsAppLid.replace(/:[0-9]+/, '');
 
-        await VerificarDuplicidade<Motorista>({
-            repositorio: this.motoristaRepositorio,
-            dados: { whatsAppLid: dados.whatsAppLid }
-        });
+            await VerificarDuplicidade<Motorista>({
+                repositorio: this.motoristaRepositorio,
+                dados: { whatsAppLid: dados.whatsAppLid }
+            });
+        }
 
-        return await this.motoristaRepositorio.save(
+        const novoMotorista = await this.motoristaRepositorio.save(
             this.motoristaRepositorio.create(dados)
         );
+        await this.aposAlteracao(novoMotorista.id, 'CRIADO');
+        return novoMotorista;
     }
 
     // Service para editar motorista: 
@@ -132,7 +144,9 @@ class MotoristaService {
         }
 
         this.motoristaRepositorio.merge(motorista, dados as Motorista);
-        return await this.motoristaRepositorio.save(motorista);
+        const motoristaEditado = await this.motoristaRepositorio.save(motorista);
+        await this.aposAlteracao(id, 'EDITADO');
+        return motoristaEditado;
     }
 
     // Service para alterar o status do motorista (ativo, inativo):
@@ -144,6 +158,7 @@ class MotoristaService {
         }
         motorista.ativo = status;
         await this.motoristaRepositorio.save(motorista);
+        await this.aposAlteracao(motorista.id, status ? 'ATIVADO' : 'INATIVADO');
     }
     
     // Service para deletar motorista:
@@ -153,6 +168,13 @@ class MotoristaService {
             throw new NaoEncontradoErro('Motorista não encontrado para a exclusão!');
         }
         await this.motoristaRepositorio.remove(motorista);
+        await this.aposAlteracao(id, 'EXCLUIDO');
+    }
+
+    // INVALIDAÇÃO + EVENTO
+    private static async aposAlteracao(motoristaId: number, acao: string): Promise<void> {
+        await cache.invalidarPorPrefixo(ChavesCache.PREFIXO_MOTORISTAS);
+        await eventBus.publicar(CanaisEventos.MOTORISTA_ALTERADO, { motoristaId, acao });
     }
 }
 
