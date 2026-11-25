@@ -29,6 +29,7 @@ export class WhatsAppController {
   
   // Propriedades globais de controle da conexão
   public sock: WASocket | null = null; 
+  public conectado = false; // usado pelo /health/ready
   private reconectando: boolean = false; // 🔥 Controla a pilha de execução para evitar loops infinitos
 
   // 1. Array de Grupos de Escala (Motoristas)
@@ -193,12 +194,14 @@ export class WhatsAppController {
       } 
       if (connection === 'open') { 
         this.reconectando = false;
+        this.conectado = true;
         console.log('✅ WhatsApp conectado e pronto para uso via Socket Puro!'); 
         
         this.escutarMensagens(); 
         this.configurarCronjobs();
       } 
       if (connection === 'close') { 
+        this.conectado = false;
         const erroCode = (lastDisconnect?.error as Boom)?.output?.statusCode || 
                          (lastDisconnect?.error as any)?.statusCode;
                          
@@ -222,7 +225,7 @@ export class WhatsAppController {
           }, 7000); 
           
         } else { 
-          console.log('🚫 Conexão encerrada permanentemente.'); 
+          console.log(`🚫 Conexão encerrada permanentemente (Código: ${erroCode}). Sessão inválida: apague/renomeie a pasta sessao_whatsapp_socket e leia o novo QR Code.`); 
           this.destruirCronjobs();
           this.reconectando = false;
         } 
@@ -273,24 +276,24 @@ export class WhatsAppController {
     }, cronOptions); 
 
     // 4. Listar rotas atribuídas da tarde (Executa às 20:27)
-    const jobRotasTarde = cron.schedule('0 8 * * *', async () => { 
-      try {  
-        const lista = await this.registroService.buscarOuCriarListaDoDia();
-        const diaDoJoinha = new Date(lista.dia).getDate() -1;
+    // const jobRotasTarde = cron.schedule('0 8 * * *', async () => { 
+    //   try {  
+    //     const lista = await this.registroService.buscarOuCriarListaDoDia();
+    //     const diaDoJoinha = new Date(lista.dia).getDate() -1;
 
-        const resultado = await this.escalaService.obterTextoPeriodoTarde(diaDoJoinha); 
+    //     const resultado = await this.escalaService.obterTextoPeriodoTarde(diaDoJoinha); 
         
-        // 💡 Correção: Enviando direto pelo socket para aceitar as menções e manter o @lid funcionando
-        if (this.sock) {
-          await this.sock.sendMessage(this.grupoId!, { 
-            text: resultado.texto, 
-            mentions: resultado.mencoes 
-          });
-        }
-      } catch (error: unknown) { 
-        console.error(`[ERRO CRON 08h00]: ${(error as Error).message}`); 
-      } 
-    }, cronOptions);
+    //     // 💡 Correção: Enviando direto pelo socket para aceitar as menções e manter o @lid funcionando
+    //     if (this.sock) {
+    //       await this.sock.sendMessage(this.grupoId!, { 
+    //         text: resultado.texto, 
+    //         mentions: resultado.mencoes 
+    //       });
+    //     }
+    //   } catch (error: unknown) { 
+    //     console.error(`[ERRO CRON 08h00]: ${(error as Error).message}`); 
+    //   } 
+    // }, cronOptions);
 
     // 5. Listar rotas atribuídas madrugada (Executa às 16:00)
     const jobRotasMadrugada = cron.schedule('00 16 * * *', async () => { 
@@ -313,7 +316,7 @@ export class WhatsAppController {
     }, cronOptions);
 
     // Salva as tarefas ativas no array da classe para desativação futura
-    this.tarefasAtivas.push(jobEscala, jobBanimento, jobRotasTarde, jobRotasMadrugada);
+    this.tarefasAtivas.push(jobEscala, jobBanimento, jobRotasMadrugada);
   }
 
 
@@ -348,19 +351,30 @@ export class WhatsAppController {
             continue;
             } 
             
-            // Captura o chat dinâmico atual (pode ser um grupo ou chat privado)
+            // Captura o chat dinâmico atual (grupo ou privado)
             const chatDeOrigemId = msg.key.remoteJid || '';
 
-            // Identifica se a mensagem veio de você mesmo (Lendo o .lid interno prioritariamente)
-            let autorRaw = msg.key.participant || msg.key.remoteJid || ''; 
-            if (msg.key.fromMe && this.sock?.user?.id) {
-                const usuarioLogado = this.sock.user as any;
-                autorRaw = usuarioLogado.lid || usuarioLogado.id || '';
+            // 🔥 CORREÇÃO EXATA PARA EVITAR O ID DO GRUPO (120363...)
+            let autorRaw = '';
+
+            if (msg.key.fromMe) {
+                // Se veio do próprio chip, extrai estritamente o ID do usuário conectado
+                const usuarioLogado = this.sock?.user as any;
+                autorRaw = usuarioLogado?.lid || usuarioLogado?.id || '';
+            } else {
+                // Se veio de terceiros, usa o participante do grupo ou o chat de origem
+                autorRaw = msg.key.participant || chatDeOrigemId;
             }
 
-            const partesJid = autorRaw.replace(/:[0-9]+/, '').split('@');
-            const autorLid = partesJid[0]; 
-            if (!autorLid) continue;
+            // Garante que o autorRaw nunca seja o ID de um grupo (@g.us)
+            if (autorRaw.endsWith('@g.us') && msg.message?.extendedTextMessage?.contextInfo?.participant) {
+                autorRaw = msg.message.extendedTextMessage.contextInfo.participant;
+            }
+
+            // Limpa de vez sufixos como :1, :2 e remove o @s.whatsapp.net ou @lid
+            const autorLid = autorRaw.split('@')[0].split(':')[0].trim();
+            if (!autorLid || autorLid.endsWith('g.us')) continue;
+
 
             // =========================================================================
             // INTERCEPTADORES GLOBAIS DE EXTRAÇÃO MANUAL (RODAM EM QUALQUER CHAT)

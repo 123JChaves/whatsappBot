@@ -1,41 +1,51 @@
 import { Router } from "express";
 import PassageiroController from "../controllers/PassageiroController";
-import AdminAutenticacaoMiddleware from "../middlewares/AdminAutenticacao";
+import { autenticar } from "../middlewares/Autenticacao";
+import { autorizar } from "../middlewares/Autorizar.middleware";
+import { PermissoesDoSistema } from "../utils/dicionario-rbac/DicionarioRbac";
 
 const rotasPassageiro = Router();
 
-// Rota pasa listar todos os passageiros:
+// Rota para listar todos os passageiros:
 rotasPassageiro.get('/passageiros',
-    AdminAutenticacaoMiddleware,
-    (PassageiroController.listarPassageiros)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_LISTAR),
+    PassageiroController.listarPassageiros
 );
 
 // Rota para mostrar um passageiro (por ID):
 rotasPassageiro.get('/passageiro/:id',
-    AdminAutenticacaoMiddleware,
-    (PassageiroController.mostrarUmPassageiro)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_LISTAR),
+    PassageiroController.mostrarUmPassageiro
 );
 
 // Rota para captar um passageiro disponível
 rotasPassageiro.get("/passageiros/disponiveis/:empresaId", 
-    (PassageiroController.listarDisponiveis)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_LISTAR),
+    PassageiroController.listarDisponiveis
 );
+
 // Rota para cadastrar passageiros:
-rotasPassageiro.post('/passageiro',
-    AdminAutenticacaoMiddleware, 
-    (PassageiroController.cadastrarPassageiro)
+rotasPassageiro.post('/passageiro', 
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_CRIAR),
+    PassageiroController.cadastrarPassageiro
 );
 
 // Rota para editar passageiro:
 rotasPassageiro.put('/passageiro/:id',
-    AdminAutenticacaoMiddleware,
-    (PassageiroController.editarPassageiro)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_EDITAR),
+    PassageiroController.editarPassageiro
 );
 
-// Rota para editar passageiro:
+// Rota para excluir passageiro:
 rotasPassageiro.delete('/passageiro/:id',
-    AdminAutenticacaoMiddleware,
-    (PassageiroController.deletarPassageiro)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_DELETAR),
+    PassageiroController.deletarPassageiro
 );
 
 export default rotasPassageiro;

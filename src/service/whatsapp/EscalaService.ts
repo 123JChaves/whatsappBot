@@ -347,7 +347,7 @@ export class EscalaService {
     const txtDiaX2 = `${dataX2.getDate().toString().padStart(2, '0')}/${(dataX2.getMonth() + 1).toString().padStart(2, '0')}`;
 
     let texto = `*Escala do dia ${txtDiaX1}* (${titulo})\n`; 
-    texto += `*Execução:* Dias ${txtDiaX1} e ${txtDiaX2}\n\n`;
+    texto += `*Execução:* Dia ${txtDiaX2}\n\n`;
 
     const blocoPlantao: string[] = [];
     let blocoApoio: string = "";

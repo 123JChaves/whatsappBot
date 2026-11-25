@@ -27,4 +27,4 @@ export class Motorista {
     @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP",
     onUpdate: "CURRENT_TIMESTAMP" })
     dataDeEdicao!: Date;
-}
+};

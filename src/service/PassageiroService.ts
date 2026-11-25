@@ -7,6 +7,8 @@ import validarCamposObrigatorios from "../utils/helpers/VerificarCamposObrigator
 import VerificarDuplicidade from "../utils/helpers/VerificarDuplicidade";
 import EnderecoService from "./EndereçoService";
 import TextoHelper from "../utils/helpers/TextoHelper";
+import { cache, ChavesCache } from "../infra/cache/CacheService";
+import { eventBus, CanaisEventos } from "../infra/eventos/EventBus";
 
 class PassageiroService {
     private static passageiroRepositorio = AppDataSource.getRepository(Passageiro);
@@ -55,7 +57,7 @@ class PassageiroService {
         return await this.passageiroRepositorio.find({
             where: {
                 empresa: { id: empresaId },
-                rota: IsNull(), // Filtra quem não tem rotaId preenchido
+                rota: IsNull(),
                 ativo: true
             },
             relations: ["endereco", "endereco.bairro"],
@@ -144,8 +146,9 @@ class PassageiroService {
         const enderecoComId = await EnderecoService.cadastrarEndereco(dados.endereco);
         dados.endereco = enderecoComId;
 
-        const novoPassageiro = this.passageiroRepositorio.create(dados);
-        return await this.passageiroRepositorio.save(novoPassageiro);
+        const novoPassageiro = await this.passageiroRepositorio.save(this.passageiroRepositorio.create(dados));
+        await this.aposAlteracao(novoPassageiro.id, 'CRIADO');
+        return novoPassageiro;
     };
 
     // Service para editar passageiro:
@@ -188,7 +191,9 @@ class PassageiroService {
         }
 
         this.passageiroRepositorio.merge(passageiro, dados as Passageiro);
-        return await this.passageiroRepositorio.save(passageiro);
+        const passageiroEditado = await this.passageiroRepositorio.save(passageiro);
+        await this.aposAlteracao(id, 'EDITADO');
+        return passageiroEditado;
     };
 
     // Service para alterar o status do passageiro (ativo, inativo):
@@ -200,6 +205,7 @@ class PassageiroService {
         }
         passageiro.ativo = status;
         await this.passageiroRepositorio.save(passageiro);
+        await this.aposAlteracao(passageiro.id, status ? 'ATIVADO' : 'INATIVADO');
     }
 
     // Service para deletar passageiro:
@@ -207,7 +213,14 @@ class PassageiroService {
         const passageiro = await this.passageiroRepositorio.findOneBy({ id });
         if (!passageiro) throw new NaoEncontradoErro('Passageiro não encontrado!');
         await this.passageiroRepositorio.remove(passageiro);
+        await this.aposAlteracao(id, 'EXCLUIDO');
     };
+
+    // Rotas exibem os passageiros embarcados -> alterar passageiro invalida o cache de rotas
+    private static async aposAlteracao(passageiroId: number, acao: string): Promise<void> {
+        await cache.invalidarPorPrefixo(ChavesCache.PREFIXO_ROTAS);
+        await eventBus.publicar(CanaisEventos.PASSAGEIRO_ALTERADO, { passageiroId, acao });
+    }
 };
 
 export default PassageiroService;

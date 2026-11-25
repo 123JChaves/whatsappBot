@@ -1,36 +1,52 @@
 import { Router } from "express";
 import RotaController from "../controllers/RotaController";
+// CORREÇÃO: Importação nomeada mantida com as chaves {}, corrigindo apenas a palavra 'Autenticacao'
+import { autenticar } from "../middlewares/Autenticacao"; 
+import { autorizar } from "../middlewares/Autorizar.middleware";
+import { PermissoesDoSistema } from "../utils/dicionario-rbac/DicionarioRbac";
 
 const rotasRota = Router();
 
 // Listar todas as rotas (útil para os menus de Tarde/Madrugada)
 rotasRota.get('/rotas', 
-    (RotaController.listarRotas)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_LISTAR),
+    RotaController.listarRotas
 );
 
 // Rota para listar rotas por turno: 
 rotasRota.get('/rotas/turno/:tipo', 
-    (RotaController.listarPorTurno)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_LISTAR),
+    RotaController.listarPorTurno
 );
 
 // Mostrar detalhes de uma rota
 rotasRota.get('/rota/:id', 
-    (RotaController.mostrarUmaRota)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_LISTAR),
+    RotaController.mostrarUmaRota
 );
 
-// Cadastrar nova rota (endpoint que o componente do App chama)
+// Cadastrar nova rota (Apenas administradores através da permissão de gerenciar rota)
 rotasRota.post('/rota', 
-    (RotaController.cadastrarRota)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_GERENCIAR_ROTA),
+    RotaController.cadastrarRota
 );
 
 // Editar dados ou ordem dos passageiros da rota
 rotasRota.put('/rota/:id', 
-    (RotaController.editarRota)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_GERENCIAR_ROTA),
+    RotaController.editarRota
 );
 
 // Excluir rota e liberar passageiros
 rotasRota.delete('/rota/:id', 
-    (RotaController.deletarRota)
+    autenticar,
+    autorizar(PermissoesDoSistema.USUARIO_GERENCIAR_ROTA),
+    RotaController.deletarRota
 );
 
 export default rotasRota;

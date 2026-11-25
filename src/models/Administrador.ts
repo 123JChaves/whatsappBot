@@ -43,5 +43,4 @@ export class Administrador {
         this.senha = await bcrypt.hash(this.senha, 10);
         }
     }
-
 }

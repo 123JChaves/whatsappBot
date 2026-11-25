@@ -145,6 +145,8 @@ vite.config.ts.timestamp-*
 # Others
 .wwebjs_auth/
 .wwebjs_cache/
-data-source.ts
-sessao_whatsapp_socket
+# data-source.ts passa a ser versionado (sem segredos: lê tudo do .env) - necessário para o build no CI
+sessao_whatsapp_socket*
 evolution-api
+public
+sessao_*

@@ -8,11 +8,13 @@
     "typeorm": "typeorm-ts-node-commonjs",
     "migration:generate": "npm run typeorm migration:generate -- ./src/migrations/<NOME_MIGRATION> -d ./src/data-source.ts",
     "migration:run": "npm run typeorm migration:run -- -d ./src/data-source.ts",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "start": "node dist/index.js",
     "build": "npx tsc",
-    "db:update": "npm run build && npm run migration:run"
+    "db:update": "npm run build && npm run migration:run",
+    "test:ci": "jest --ci --passWithNoTests --forceExit",
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
@@ -34,6 +36,7 @@
     "dotenv": "^17.4.2",
     "expo": "^56.0.11",
     "express": "^5.2.1",
+    "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "mysql2": "^3.22.1",
@@ -64,7 +67,7 @@
   "allowScripts": {
     "@whiskeysockets/baileys@7.0.0-rc13": true,
     "bcrypt@6.0.0": true,
-    "protobufjs@7.6.4": true,
+    "protobufjs@7.6.5": true,
     "sharp@0.34.5": true,
     "unrs-resolver@1.12.2": true
   },

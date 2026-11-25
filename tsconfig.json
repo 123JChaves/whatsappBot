@@ -16,5 +16,5 @@
     "types": ["jest", "node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "jest.config.js"]
+  "exclude": ["node_modules", "jest.config.js", "src/**/__tests__/**"]
 }
